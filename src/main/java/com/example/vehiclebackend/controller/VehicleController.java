@@ -21,18 +21,19 @@ public class VehicleController {
     }
 
     record VehicleRequest(
+            @NotBlank String kennzeichen,
             @NotBlank String make,
             @NotBlank String model,
             @Min(1886) int year,
             @NotBlank String color,
             @Min(0) int kilometers) {}
     record KilometersRequest(@Min(0) int kilometers) {}
-    record VehicleResponse(Long id, String make, String model, int year, String color, int kilometers, boolean inUse, String username, String createdBy) {}
+    record VehicleResponse(Long id, String kennzeichen, String make, String model, int year, String color, int kilometers, boolean inUse, String username, String createdBy) {}
 
     private VehicleResponse toResponse(Vehicle v) {
         String createdBy = v.getUser() != null ? v.getUser().getUsername() : "";
         String username = v.getInUseBy() != null ? v.getInUseBy().getUsername() : createdBy;
-        return new VehicleResponse(v.getId(), v.getMake(), v.getModel(),
+        return new VehicleResponse(v.getId(), v.getKennzeichen(), v.getMake(), v.getModel(),
                 v.getYear(), v.getColor(), v.getKilometers(), v.isInUse(), username, createdBy);
     }
 
@@ -45,6 +46,7 @@ public class VehicleController {
     @PostMapping
     public ResponseEntity<VehicleResponse> addVehicle(@Valid @RequestBody VehicleRequest req) {
         Vehicle vehicle = new Vehicle();
+        vehicle.setKennzeichen(req.kennzeichen());
         vehicle.setMake(req.make());
         vehicle.setModel(req.model());
         vehicle.setYear(req.year());

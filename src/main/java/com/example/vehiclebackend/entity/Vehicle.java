@@ -11,6 +11,9 @@ public class Vehicle {
     private Long id;
 
     @Column(nullable = false)
+    private String kennzeichen;
+
+    @Column(nullable = false)
     private String make;
 
     @Column(nullable = false)
@@ -39,6 +42,8 @@ public class Vehicle {
     public Vehicle() {}
 
     public Long getId() { return id; }
+    public String getKennzeichen() { return kennzeichen; }
+    public void setKennzeichen(String kennzeichen) { this.kennzeichen = kennzeichen; }
     public String getMake() { return make; }
     public void setMake(String make) { this.make = make; }
     public String getModel() { return model; }

@@ -1,0 +1,9 @@
+# Secrets
+.env
+
+# Maven build output
+target/
+
+# IDE
+.idea/
+*.iml

@@ -3,7 +3,7 @@ services:
   db:
     image: mysql:8
     environment:
-      MYSQL_ROOT_PASSWORD: yourdbpassword
+      MYSQL_ROOT_PASSWORD: ${DB_PASSWORD:?set DB_PASSWORD in .env}
       MYSQL_DATABASE: vehicledb
     volumes:
       - db_data:/var/lib/mysql
@@ -11,16 +11,32 @@ services:
 
   app:
     build: .
-    ports:
-      - "8080:8080"
+    expose:
+      - "8080"
     environment:
       DB_URL: jdbc:mysql://db:3306/vehicledb
       DB_USERNAME: root
-      DB_PASSWORD: yourdbpassword
-      JWT_SECRET: c011451a1fc7725c8d7b48d6e577cc5cb67db6ca38cadbdd3c369377ccd0a3f2
+      DB_PASSWORD: ${DB_PASSWORD:?set DB_PASSWORD in .env}
+      JWT_SECRET: ${JWT_SECRET:?set JWT_SECRET in .env}
     depends_on:
       - db
     restart: always
 
+  caddy:
+    image: caddy:2
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile
+      - ./web:/srv/www
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - app
+    restart: always
+
 volumes:
   db_data:
+  caddy_data:
+  caddy_config:

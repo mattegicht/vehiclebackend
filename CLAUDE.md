@@ -63,9 +63,11 @@ HTTP request
 
 **`VehicleResponse` username field:** The `username` field returns `inUseBy.username` when the vehicle is in use, or falls back to `createdBy` when free. Both fields are sent so the client can always display the creator separately.
 
-**Seeded users (created on startup if absent):**
-- `demo` / `password` — `ROLE_USER`
-- `admin` / `admin` — `ROLE_ADMIN`
+**Seeded users:** No credentials are hardcoded. An account is created on startup **only if its password env var is set** (and the user doesn't already exist):
+- `SEED_ADMIN_PASSWORD` set → admin account (`SEED_ADMIN_USERNAME`, default `admin`) — `ROLE_ADMIN`
+- `SEED_DEMO_PASSWORD` set → demo account (`SEED_DEMO_USERNAME`, default `demo`) — `ROLE_USER`
+
+If neither is set the app ships with no seeded accounts (no default backdoor). A legacy `demo` user with a malformed role is still normalized to `ROLE_USER` on startup.
 
 **Schema management:** `hibernate.ddl-auto=update` — Hibernate auto-migrates the schema on every startup. No separate migration tool is used.
 
@@ -77,7 +79,7 @@ Findings from a full review of the backend, ordered by severity. Unresolved unle
 
 ### High
 1. ~~**Secrets committed to the repo.**~~ **FIXED 2026-06-02.** Removed the `jwt.secret` / `DB_PASSWORD` fallback defaults from `application.properties` (now fails fast if unset); moved compose secrets to a gitignored `.env` (`.env.example` documents the keys) with `${VAR:?...}` required-var syntax; rotated the JWT secret; added `.gitignore`. **Note:** the old secrets remain in git history — they're now useless for prod as long as prod uses the new secret, but purge history with `git filter-repo` if the repo is/was public.
-2. **`admin / admin` seeded in every environment** (`DataSeeder.java:38`). A `ROLE_ADMIN` backdoor on a public deployment. Gate seeding behind a dev profile (`@Profile("dev")`) or require the admin password via env var.
+2. ~~**`admin / admin` seeded in every environment**~~ **FIXED 2026-06-02.** `DataSeeder` no longer hardcodes credentials — admin/demo accounts are seeded only when `SEED_ADMIN_PASSWORD` / `SEED_DEMO_PASSWORD` are set (via `seed.*` properties). Omitting them ships with no seeded accounts. Bootstrap admin password lives in the gitignored `.env`. **Action:** the previously-deployed `admin/admin` account, if it exists in the live DB, must be deleted or have its password changed — this fix only affects fresh seeding, not rows already persisted.
 
 ### Medium
 3. **`updateKilometers` has no authorization check** (`VehicleService.java:51-56`). Unlike `deleteVehicle`/`toggleInUse`, any authenticated user can change the odometer on any vehicle. Apply the same owner/`inUseBy` check or confirm it's intentional.

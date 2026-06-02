@@ -1,0 +1,26 @@
+version: "3.9"
+services:
+  db:
+    image: mysql:8
+    environment:
+      MYSQL_ROOT_PASSWORD: yourdbpassword
+      MYSQL_DATABASE: vehicledb
+    volumes:
+      - db_data:/var/lib/mysql
+    restart: always
+
+  app:
+    build: .
+    ports:
+      - "8080:8080"
+    environment:
+      DB_URL: jdbc:mysql://db:3306/vehicledb
+      DB_USERNAME: root
+      DB_PASSWORD: yourdbpassword
+      JWT_SECRET: c011451a1fc7725c8d7b48d6e577cc5cb67db6ca38cadbdd3c369377ccd0a3f2
+    depends_on:
+      - db
+    restart: always
+
+volumes:
+  db_data:

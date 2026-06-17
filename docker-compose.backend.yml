@@ -1,5 +1,8 @@
 # Backend-only stack: MySQL + Spring Boot app, no Caddy/TLS.
-# Publishes the app on host port 8080 (HTTP, plain).
+# Publishes the app on host port 80 (plain HTTP) so the server's existing
+# 9080->80 port redirection reaches it. The app speaks HTTP only, so the
+# 9443->443 (HTTPS) path has nothing to terminate TLS and won't work without
+# a proxy like Caddy.
 #
 #   docker compose -f docker-compose.backend.yml up -d --build
 #
@@ -17,7 +20,7 @@ services:
   app:
     build: .
     ports:
-      - "8080:8080"          # published to the host (vs. expose: in the full stack)
+      - "80:8080"            # host 80 (target of the 9080->80 redirect) -> app 8080
     environment:
       DB_URL: jdbc:mysql://db:3306/vehicledb
       DB_USERNAME: root

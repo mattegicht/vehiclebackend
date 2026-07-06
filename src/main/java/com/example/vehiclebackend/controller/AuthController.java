@@ -1,6 +1,8 @@
 package com.example.vehiclebackend.controller;
 
 import com.example.vehiclebackend.service.AuthService;
+import jakarta.validation.Valid;
+import jakarta.validation.constraints.NotBlank;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.authentication.BadCredentialsException;
@@ -16,11 +18,11 @@ public class AuthController {
         this.authService = authService;
     }
 
-    record LoginRequest(String username, String password) {}
+    record LoginRequest(@NotBlank String username, @NotBlank String password) {}
     record LoginResponse(String token, String username, String role) {}
 
     @PostMapping("/login")
-    public ResponseEntity<?> login(@RequestBody LoginRequest req) {
+    public ResponseEntity<?> login(@Valid @RequestBody LoginRequest req) {
         try {
             AuthService.LoginResult result = authService.login(req.username(), req.password());
             return ResponseEntity.ok(new LoginResponse(result.token(), req.username(), result.role()));

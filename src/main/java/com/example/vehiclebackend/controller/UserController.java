@@ -3,6 +3,7 @@ package com.example.vehiclebackend.controller;
 import com.example.vehiclebackend.repository.UserRepository;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Size;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
@@ -22,7 +23,8 @@ public class UserController {
         this.passwordEncoder = passwordEncoder;
     }
 
-    record ChangePasswordRequest(@NotBlank String currentPassword, @NotBlank String newPassword) {}
+    record ChangePasswordRequest(@NotBlank String currentPassword,
+                                 @NotBlank @Size(min = 8) String newPassword) {}
 
     @PutMapping("/me/password")
     public ResponseEntity<Void> changePassword(@Valid @RequestBody ChangePasswordRequest req,

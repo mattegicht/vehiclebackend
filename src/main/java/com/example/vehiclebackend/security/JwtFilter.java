@@ -1,5 +1,6 @@
 package com.example.vehiclebackend.security;
 
+import io.jsonwebtoken.JwtException;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -7,6 +8,7 @@ import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.core.userdetails.UserDetailsService;
+import org.springframework.security.core.userdetails.UsernameNotFoundException;
 import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
 
@@ -36,8 +38,10 @@ public class JwtFilter extends OncePerRequestFilter {
                 var auth = new UsernamePasswordAuthenticationToken(
                         userDetails, null, userDetails.getAuthorities());
                 SecurityContextHolder.getContext().setAuthentication(auth);
-            } catch (Exception e) {
-                // invalid or expired token — leave SecurityContext unauthenticated
+            } catch (JwtException | IllegalArgumentException | UsernameNotFoundException e) {
+                // invalid, expired, or malformed token / unknown user — leave
+                // SecurityContext unauthenticated. Anything else (e.g. a DB
+                // failure) propagates as a 500 instead of masquerading as 401.
             }
         }
         chain.doFilter(request, response);

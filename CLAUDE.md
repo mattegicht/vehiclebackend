@@ -55,9 +55,9 @@ HTTP request
   → JPA Repository
 ```
 
-**Auth:** Stateless JWT. `JwtFilter` runs on every request, reads `Authorization: Bearer <token>`, calls `JwtUtil.parseClaims()`, then loads `UserDetails` and sets `SecurityContextHolder`. Tokens expire after 24 h. CORS allows all origins with credentials.
+**Auth:** Stateless JWT. `JwtFilter` runs on every request, reads `Authorization: Bearer <token>`, calls `JwtUtil.parseClaims()`, then loads `UserDetails` and sets `SecurityContextHolder`. Tokens expire after 24 h. CORS is restricted to the origins in `CORS_ALLOWED_ORIGINS` (comma-separated, default `https://vehiclebackend.duckdns.org`); native apps send no Origin header and are unaffected.
 
-**Authorization logic in services:** Role checks are done in service methods (not just at the route level). `deleteVehicle` and `toggleInUse` both call `currentUser()` — which reads the authenticated username from `SecurityContextHolder` and looks it up in the DB — and then compare against the resource's owner. Only the owner or `ROLE_ADMIN` can delete a vehicle; only the current `inUseBy` user (or any user if the vehicle is free) can toggle it.
+**Authorization logic in services:** Role checks are done in service methods (not just at the route level) via shared helpers (`isCreator` / `isCurrentDriver` / `isAdmin`) that compare `currentUser()` — the authenticated username from `SecurityContextHolder`, looked up in the DB — against the resource. Only the owner or `ROLE_ADMIN` can delete a vehicle; only the current `inUseBy` user (or any user if the vehicle is free) can toggle it; only the creator, current driver, or an admin can update kilometers. `toggleInUse` runs in a transaction with a pessimistic row lock (`findWithLockById`) so concurrent check-outs serialize.
 
 **Vehicle dual-user model:** `Vehicle` has two user FKs — `user` (permanent creator/owner) and `inUseBy` (who currently has it checked out). `inUse` boolean tracks state; `inUseBy` is set on toggle-on and nulled on toggle-off.
 
@@ -82,16 +82,22 @@ Findings from a full review of the backend, ordered by severity. Unresolved unle
 2. ~~**`admin / admin` seeded in every environment**~~ **FIXED 2026-06-02.** `DataSeeder` no longer hardcodes credentials — admin/demo accounts are seeded only when `SEED_ADMIN_PASSWORD` / `SEED_DEMO_PASSWORD` are set (via `seed.*` properties). Omitting them ships with no seeded accounts. Bootstrap admin password lives in the gitignored `.env`. **Action:** the previously-deployed `admin/admin` account, if it exists in the live DB, must be deleted or have its password changed — this fix only affects fresh seeding, not rows already persisted.
 
 ### Medium
-3. **`updateKilometers` has no authorization check** (`VehicleService.java:51-56`). Unlike `deleteVehicle`/`toggleInUse`, any authenticated user can change the odometer on any vehicle. Apply the same owner/`inUseBy` check or confirm it's intentional.
-4. **Race condition on `toggleInUse`** (`VehicleService.java:58-74`). Read-modify-write with no locking; concurrent check-outs can both succeed and overwrite `inUseBy`. Add `@Version` optimistic locking to `Vehicle` or a pessimistic find lock.
-5. **Over-broad CORS** (`SecurityConfig.java:46-49`). `allowedOriginPatterns("*")` + `allowCredentials(true)` lets any site make credentialed calls (Spring reflects the origin). Restrict to the real frontend origin(s), e.g. `https://vehiclebackend.duckdns.org`.
+3. ~~**`updateKilometers` has no authorization check**~~ **FIXED 2026-07-06.** Now requires the vehicle's creator, its current driver (`inUseBy`), or an admin.
+4. ~~**Race condition on `toggleInUse`**~~ **FIXED 2026-07-06.** `toggleInUse` is `@Transactional` and reads the row via `VehicleRepository.findWithLockById` (`PESSIMISTIC_WRITE`), serializing concurrent check-outs.
+5. ~~**Over-broad CORS**~~ **FIXED 2026-07-06.** Allowed origins come from `cors.allowed-origins` (`CORS_ALLOWED_ORIGINS`, comma-separated), default `https://vehiclebackend.duckdns.org`. **Action:** if a Flutter *web* build is served from another origin, add it to `CORS_ALLOWED_ORIGINS` in `.env`.
 
 ### Low / polish
-6. **N+1 queries on `GET /api/vehicles`** (`VehicleService.java:32` + `Vehicle.java:34,38`). Two EAGER `@ManyToOne` relations issue extra queries per vehicle. Use a `join fetch` query if the list grows.
-7. **Dead code:** `VehicleRepository.findAllByUser` (`:10`) is unused — the list endpoint returns all vehicles to every user (looks intentional for a shared fleet).
-8. **No password strength validation** on change/create (`UserController.java:25`, `AdminController.java:22`) — only `@NotBlank`. Consider `@Size(min=8)`.
-9. **`kennzeichen` not unique / kilometers can decrease** — no unique constraint on the plate (`Vehicle.java:13`); `updateKilometers` accepts any value ≥0, so the odometer can go down. Confirm business rules.
-10. **`secret.getBytes()` uses the platform default charset** (`JwtUtil.java:23`). Pin it: `secret.getBytes(StandardCharsets.UTF_8)`.
+6. ~~**N+1 queries on `GET /api/vehicles`**~~ **FIXED 2026-07-06.** List endpoint uses `findAllWithUsers()` with `join fetch` on both user relations (single query).
+7. ~~**Dead code: `VehicleRepository.findAllByUser`**~~ **FIXED 2026-07-06.** Removed; replaced by `existsByUser` / `findAllByInUseBy`, which `deleteUser` now uses (see #11).
+8. ~~**No password strength validation**~~ **FIXED 2026-07-06.** `@Size(min = 8)` on `newPassword` (change-password) and `password` (admin create-user).
+9. **Partially fixed 2026-07-06:** `kennzeichen` now has a unique constraint (`Vehicle.java`). **Note:** `ddl-auto=update` can only add the DB constraint if no duplicate plates already exist — check the live DB. Kilometers can still decrease (any value ≥ 0 accepted) — deliberate for now, allows corrections; confirm business rule.
+10. ~~**`secret.getBytes()` uses the platform default charset**~~ **FIXED 2026-07-06.** Pinned to UTF-8; `JwtParser` is also now built once and reused.
+
+### Fixed on discovery (review 2026-07-06)
+11. **`deleteUser` FK violation → 500** — deleting a user who created vehicles hit the `vehicles.user_id` NOT NULL FK. Now: the user's check-outs are released (`inUseBy` cleared), and if they still own vehicles the API returns **409** with a clear message instead of 500.
+12. **Login with missing/null password → 500** — `LoginRequest` had no validation; `BCryptPasswordEncoder.matches(null, …)` threw. Now `@NotBlank` on both fields + `@Valid` → 400.
+13. **`JwtFilter` swallowed all exceptions** — a DB outage during user lookup was masked as 401. Now only `JwtException | IllegalArgumentException | UsernameNotFoundException` are treated as unauthenticated; infrastructure errors propagate as 500.
+14. **`createUser` check-then-act race → 500** — concurrent duplicate usernames hit the unique constraint. Now `DataIntegrityViolationException` is mapped to **409**.
 
 ### Done well
 Constructor injection throughout; login returns generic "Invalid credentials" (no user enumeration); passwords BCrypt-hashed and never leaked in DTOs; JWT secret length validated at startup; stateless sessions; clean `ResponseStatusException` error mapping.

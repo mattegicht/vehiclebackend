@@ -4,6 +4,7 @@ import com.example.vehiclebackend.entity.User;
 import com.example.vehiclebackend.service.AdminService;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Size;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
@@ -19,7 +20,7 @@ public class AdminController {
         this.adminService = adminService;
     }
 
-    record CreateUserRequest(@NotBlank String username, @NotBlank String password) {}
+    record CreateUserRequest(@NotBlank String username, @NotBlank @Size(min = 8) String password) {}
     record UserResponse(Long id, String username, String role) {}
 
     @GetMapping("/users")

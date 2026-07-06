@@ -1,10 +1,14 @@
 package com.example.vehiclebackend.service;
 
 import com.example.vehiclebackend.entity.User;
+import com.example.vehiclebackend.entity.Vehicle;
 import com.example.vehiclebackend.repository.UserRepository;
+import com.example.vehiclebackend.repository.VehicleRepository;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
 import org.springframework.web.server.ResponseStatusException;
@@ -13,10 +17,14 @@ import org.springframework.web.server.ResponseStatusException;
 public class AdminService {
 
     private final UserRepository userRepository;
+    private final VehicleRepository vehicleRepository;
     private final PasswordEncoder passwordEncoder;
 
-    public AdminService(UserRepository userRepository, PasswordEncoder passwordEncoder) {
+    public AdminService(UserRepository userRepository,
+                        VehicleRepository vehicleRepository,
+                        PasswordEncoder passwordEncoder) {
         this.userRepository = userRepository;
+        this.vehicleRepository = vehicleRepository;
         this.passwordEncoder = passwordEncoder;
     }
 
@@ -28,15 +36,33 @@ public class AdminService {
         if (userRepository.findByUsername(username).isPresent()) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Username already exists");
         }
-        return userRepository.save(new User(username, passwordEncoder.encode(password), "ROLE_USER"));
+        try {
+            return userRepository.save(new User(username, passwordEncoder.encode(password), "ROLE_USER"));
+        } catch (DataIntegrityViolationException e) {
+            // Concurrent create raced past the check above; the unique constraint caught it.
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Username already exists");
+        }
     }
 
+    @Transactional
     public void deleteUser(Long id) {
         User user = userRepository.findById(id)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "User not found"));
         if ("ROLE_ADMIN".equals(user.getRole())) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Cannot delete admin users");
         }
-        userRepository.deleteById(id);
+        // Release any vehicles the user still has checked out.
+        List<Vehicle> checkedOut = vehicleRepository.findAllByInUseBy(user);
+        for (Vehicle vehicle : checkedOut) {
+            vehicle.setInUse(false);
+            vehicle.setInUseBy(null);
+        }
+        vehicleRepository.saveAll(checkedOut);
+        // vehicles.user_id is NOT NULL, so deleting a creator would violate the FK.
+        if (vehicleRepository.existsByUser(user)) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "User still owns vehicles — delete or reassign them first");
+        }
+        userRepository.delete(user);
     }
 }

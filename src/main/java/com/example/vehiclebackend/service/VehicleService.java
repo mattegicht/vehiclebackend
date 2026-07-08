@@ -1,7 +1,9 @@
 package com.example.vehiclebackend.service;
 
+import com.example.vehiclebackend.entity.BookingRecord;
 import com.example.vehiclebackend.entity.User;
 import com.example.vehiclebackend.entity.Vehicle;
+import com.example.vehiclebackend.repository.BookingRecordRepository;
 import com.example.vehiclebackend.repository.UserRepository;
 import com.example.vehiclebackend.repository.VehicleRepository;
 import org.springframework.http.HttpStatus;
@@ -18,10 +20,13 @@ public class VehicleService {
 
     private final VehicleRepository vehicleRepository;
     private final UserRepository userRepository;
+    private final BookingRecordRepository bookingRecordRepository;
 
-    public VehicleService(VehicleRepository vehicleRepository, UserRepository userRepository) {
+    public VehicleService(VehicleRepository vehicleRepository, UserRepository userRepository,
+                          BookingRecordRepository bookingRecordRepository) {
         this.vehicleRepository = vehicleRepository;
         this.userRepository = userRepository;
+        this.bookingRecordRepository = bookingRecordRepository;
     }
 
     private User currentUser() {
@@ -56,13 +61,21 @@ public class VehicleService {
         return vehicleRepository.save(vehicle);
     }
 
+    @Transactional
     public void deleteVehicle(Long id) {
         Vehicle vehicle = getVehicle(id);
         User user = currentUser();
         if (!isCreator(vehicle, user) && !isAdmin(user)) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "You do not own this vehicle");
         }
+        // booking_records has an FK to the vehicle — clear the history first.
+        bookingRecordRepository.deleteByVehicle(vehicle);
         vehicleRepository.delete(vehicle);
+    }
+
+    public List<BookingRecord> getHistory(Long id) {
+        Vehicle vehicle = getVehicle(id);
+        return bookingRecordRepository.findByVehicleOrderByCheckedOutAtDesc(vehicle);
     }
 
     public Vehicle updateKilometers(Long id, int kilometers) {
@@ -87,14 +100,25 @@ public class VehicleService {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN,
                     "Vehicle is currently in use by " + vehicle.getInUseBy().getUsername());
         }
+        Instant now = Instant.now();
         if (vehicle.isInUse()) {
             vehicle.setInUse(false);
             vehicle.setInUseBy(null);
             vehicle.setInUseSince(null);
+            // Close the open booking record with the return time + odometer.
+            bookingRecordRepository
+                    .findFirstByVehicleAndCheckedInAtIsNullOrderByCheckedOutAtDesc(vehicle)
+                    .ifPresent(booking -> {
+                        booking.setCheckedInAt(now);
+                        booking.setKmAtCheckin(vehicle.getKilometers());
+                        bookingRecordRepository.save(booking);
+                    });
         } else {
             vehicle.setInUse(true);
             vehicle.setInUseBy(user);
-            vehicle.setInUseSince(Instant.now());
+            vehicle.setInUseSince(now);
+            bookingRecordRepository.save(
+                    new BookingRecord(vehicle, user.getUsername(), now, vehicle.getKilometers()));
         }
         return vehicleRepository.save(vehicle);
     }

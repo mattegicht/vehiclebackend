@@ -1,12 +1,15 @@
 com\example\vehiclebackend\service\UserDetailsServiceImpl.class
 com\example\vehiclebackend\controller\AuthController$LoginRequest.class
+com\example\vehiclebackend\controller\VehicleController$BookingResponse.class
 com\example\vehiclebackend\controller\AdminController$UserResponse.class
 com\example\vehiclebackend\security\JwtUtil.class
+com\example\vehiclebackend\controller\AdminController$ChangeRoleRequest.class
 com\example\vehiclebackend\controller\VehicleController$VehicleRequest.class
 com\example\vehiclebackend\config\SecurityConfig.class
 com\example\vehiclebackend\controller\VehicleController.class
 com\example\vehiclebackend\controller\UserController$ChangePasswordRequest.class
 com\example\vehiclebackend\controller\AuthController.class
+com\example\vehiclebackend\repository\BookingRecordRepository.class
 com\example\vehiclebackend\controller\AdminController.class
 com\example\vehiclebackend\repository\UserRepository.class
 com\example\vehiclebackend\controller\AuthController$LoginResponse.class
@@ -23,4 +26,6 @@ com\example\vehiclebackend\service\AuthService$LoginResult.class
 com\example\vehiclebackend\service\VehicleService.class
 com\example\vehiclebackend\repository\VehicleRepository.class
 com\example\vehiclebackend\service\AuthService.class
+com\example\vehiclebackend\entity\BookingRecord.class
 com\example\vehiclebackend\VehicleBackendApplication.class
+com\example\vehiclebackend\controller\AdminController$ResetPasswordRequest.class

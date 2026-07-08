@@ -30,6 +30,7 @@ public class VehicleController {
             @Min(0) int kilometers) {}
     record KilometersRequest(@Min(0) int kilometers) {}
     record VehicleResponse(Long id, String kennzeichen, String make, String model, int year, String color, int kilometers, boolean inUse, String username, String createdBy, Instant inUseSince) {}
+    record BookingResponse(Long id, String username, Instant checkedOutAt, Instant checkedInAt, int kmAtCheckout, Integer kmAtCheckin) {}
 
     private VehicleResponse toResponse(Vehicle v) {
         String createdBy = v.getUser() != null ? v.getUser().getUsername() : "";
@@ -72,5 +73,13 @@ public class VehicleController {
     @PutMapping("/{id}/toggle-in-use")
     public ResponseEntity<VehicleResponse> toggleInUse(@PathVariable Long id) {
         return ResponseEntity.ok(toResponse(vehicleService.toggleInUse(id)));
+    }
+
+    @GetMapping("/{id}/history")
+    public ResponseEntity<List<BookingResponse>> getHistory(@PathVariable Long id) {
+        return ResponseEntity.ok(vehicleService.getHistory(id).stream()
+                .map(b -> new BookingResponse(b.getId(), b.getUsername(), b.getCheckedOutAt(),
+                        b.getCheckedInAt(), b.getKmAtCheckout(), b.getKmAtCheckin()))
+                .toList());
     }
 }

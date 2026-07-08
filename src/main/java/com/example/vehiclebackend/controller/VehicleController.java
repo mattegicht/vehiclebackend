@@ -82,4 +82,18 @@ public class VehicleController {
                         b.getCheckedInAt(), b.getKmAtCheckout(), b.getKmAtCheckin()))
                 .toList());
     }
+
+    // Admin-only (enforced in SecurityConfig): clears the vehicle's booking history.
+    @DeleteMapping("/{id}/history")
+    public ResponseEntity<Void> clearHistory(@PathVariable Long id) {
+        vehicleService.clearHistory(id);
+        return ResponseEntity.noContent().build();
+    }
+
+    // Admin-only (enforced in SecurityConfig): deletes a single history entry.
+    @DeleteMapping("/{id}/history/{recordId}")
+    public ResponseEntity<Void> deleteHistoryEntry(@PathVariable Long id, @PathVariable Long recordId) {
+        vehicleService.deleteHistoryEntry(id, recordId);
+        return ResponseEntity.noContent().build();
+    }
 }

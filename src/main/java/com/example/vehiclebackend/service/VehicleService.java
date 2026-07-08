@@ -78,6 +78,25 @@ public class VehicleService {
         return bookingRecordRepository.findByVehicleOrderByCheckedOutAtDesc(vehicle);
     }
 
+    /** Admin-only: wipe a vehicle's booking history (route-guarded in SecurityConfig). */
+    @Transactional
+    public void clearHistory(Long id) {
+        Vehicle vehicle = getVehicle(id);
+        bookingRecordRepository.deleteByVehicle(vehicle);
+    }
+
+    /** Admin-only: delete a single booking record. The record must belong to the
+     *  vehicle in the path, otherwise it's treated as not found. */
+    @Transactional
+    public void deleteHistoryEntry(Long vehicleId, Long recordId) {
+        BookingRecord record = bookingRecordRepository.findById(recordId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Booking record not found"));
+        if (!record.getVehicle().getId().equals(vehicleId)) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Booking record not found for this vehicle");
+        }
+        bookingRecordRepository.delete(record);
+    }
+
     public Vehicle updateKilometers(Long id, int kilometers) {
         Vehicle vehicle = getVehicle(id);
         User user = currentUser();

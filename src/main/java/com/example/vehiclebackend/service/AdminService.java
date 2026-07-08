@@ -44,6 +44,32 @@ public class AdminService {
         }
     }
 
+    /** Admin-set a user's password directly — no current-password check (unlike
+     *  self-service change). Works for any account, including other admins. */
+    public User resetPassword(Long id, String newPassword) {
+        User user = userRepository.findById(id)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "User not found"));
+        user.setPasswordHash(passwordEncoder.encode(newPassword));
+        return userRepository.save(user);
+    }
+
+    @Transactional
+    public User changeRole(Long id, String role) {
+        if (!"ROLE_USER".equals(role) && !"ROLE_ADMIN".equals(role)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid role");
+        }
+        User user = userRepository.findById(id)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "User not found"));
+        // Never let the last admin be demoted — that would lock everyone out of
+        // user management with no way back in through the app.
+        if ("ROLE_ADMIN".equals(user.getRole()) && "ROLE_USER".equals(role)
+                && userRepository.countByRole("ROLE_ADMIN") <= 1) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Cannot demote the last admin");
+        }
+        user.setRole(role);
+        return userRepository.save(user);
+    }
+
     @Transactional
     public void deleteUser(Long id) {
         User user = userRepository.findById(id)
@@ -56,6 +82,7 @@ public class AdminService {
         for (Vehicle vehicle : checkedOut) {
             vehicle.setInUse(false);
             vehicle.setInUseBy(null);
+            vehicle.setInUseSince(null);
         }
         vehicleRepository.saveAll(checkedOut);
         // vehicles.user_id is NOT NULL, so deleting a creator would violate the FK.

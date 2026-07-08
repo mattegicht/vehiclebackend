@@ -21,6 +21,8 @@ public class AdminController {
     }
 
     record CreateUserRequest(@NotBlank String username, @NotBlank @Size(min = 8) String password) {}
+    record ResetPasswordRequest(@NotBlank @Size(min = 8) String newPassword) {}
+    record ChangeRoleRequest(@NotBlank String role) {}
     record UserResponse(Long id, String username, String role) {}
 
     @GetMapping("/users")
@@ -33,6 +35,20 @@ public class AdminController {
     @PostMapping("/users")
     public ResponseEntity<UserResponse> createUser(@Valid @RequestBody CreateUserRequest req) {
         User user = adminService.createUser(req.username(), req.password());
+        return ResponseEntity.ok(new UserResponse(user.getId(), user.getUsername(), user.getRole()));
+    }
+
+    @PutMapping("/users/{id}/password")
+    public ResponseEntity<Void> resetPassword(@PathVariable Long id,
+                                              @Valid @RequestBody ResetPasswordRequest req) {
+        adminService.resetPassword(id, req.newPassword());
+        return ResponseEntity.noContent().build();
+    }
+
+    @PutMapping("/users/{id}/role")
+    public ResponseEntity<UserResponse> changeRole(@PathVariable Long id,
+                                                   @Valid @RequestBody ChangeRoleRequest req) {
+        User user = adminService.changeRole(id, req.role());
         return ResponseEntity.ok(new UserResponse(user.getId(), user.getUsername(), user.getRole()));
     }
 

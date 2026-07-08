@@ -8,6 +8,7 @@ import jakarta.validation.constraints.NotBlank;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import java.time.Instant;
 import java.util.List;
 
 @RestController
@@ -28,13 +29,14 @@ public class VehicleController {
             @NotBlank String color,
             @Min(0) int kilometers) {}
     record KilometersRequest(@Min(0) int kilometers) {}
-    record VehicleResponse(Long id, String kennzeichen, String make, String model, int year, String color, int kilometers, boolean inUse, String username, String createdBy) {}
+    record VehicleResponse(Long id, String kennzeichen, String make, String model, int year, String color, int kilometers, boolean inUse, String username, String createdBy, Instant inUseSince) {}
 
     private VehicleResponse toResponse(Vehicle v) {
         String createdBy = v.getUser() != null ? v.getUser().getUsername() : "";
         String username = v.getInUseBy() != null ? v.getInUseBy().getUsername() : createdBy;
         return new VehicleResponse(v.getId(), v.getKennzeichen(), v.getMake(), v.getModel(),
-                v.getYear(), v.getColor(), v.getKilometers(), v.isInUse(), username, createdBy);
+                v.getYear(), v.getColor(), v.getKilometers(), v.isInUse(), username, createdBy,
+                v.getInUseSince());
     }
 
     @GetMapping

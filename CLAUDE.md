@@ -84,7 +84,7 @@ Findings from a full review of the backend, ordered by severity. Unresolved unle
 ### Medium
 3. ~~**`updateKilometers` has no authorization check**~~ **FIXED 2026-07-06.** Now requires the vehicle's creator, its current driver (`inUseBy`), or an admin.
 4. ~~**Race condition on `toggleInUse`**~~ **FIXED 2026-07-06.** `toggleInUse` is `@Transactional` and reads the row via `VehicleRepository.findWithLockById` (`PESSIMISTIC_WRITE`), serializing concurrent check-outs.
-5. ~~**Over-broad CORS**~~ **FIXED 2026-07-06.** Allowed origins come from `cors.allowed-origins` (`CORS_ALLOWED_ORIGINS`, comma-separated), default `https://vehiclebackend.duckdns.org`. **Action:** if a Flutter *web* build is served from another origin, add it to `CORS_ALLOWED_ORIGINS` in `.env`.
+5. ~~**Over-broad CORS**~~ **FIXED 2026-07-06.** Allowed origins come from `cors.allowed-origins` (`CORS_ALLOWED_ORIGINS`, comma-separated), default `https://vehiclebackend.duckdns.org`. **Action:** if a Flutter *web* build is served from another origin (including bare-IP access like `https://192.168.54.25:9443`), add it to `CORS_ALLOWED_ORIGINS` in `.env`. **Follow-up fix 2026-07-06:** the app is accessed via bare IP, which caused `403 Invalid CORS request` — added `server.forward-headers-strategy=framework` so Spring honors Caddy's `X-Forwarded-Proto/Host` and recognizes same-origin requests (Origin matching the public URL) without needing them in the allow-list; also added the LAN-IP origin to `.env.example`.
 
 ### Low / polish
 6. ~~**N+1 queries on `GET /api/vehicles`**~~ **FIXED 2026-07-06.** List endpoint uses `findAllWithUsers()` with `join fetch` on both user relations (single query).

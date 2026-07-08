@@ -2,6 +2,8 @@ package com.example.vehiclebackend.entity;
 
 import jakarta.persistence.*;
 
+import java.time.Instant;
+
 @Entity
 @Table(name = "vehicles")
 public class Vehicle {
@@ -39,6 +41,12 @@ public class Vehicle {
     @JoinColumn(name = "in_use_by_id")
     private User inUseBy;
 
+    // When the vehicle was last checked out; set on toggle-on, nulled on
+    // toggle-off. Null for a free vehicle (and for rows created before this
+    // field existed).
+    @Column(name = "in_use_since")
+    private Instant inUseSince;
+
     public Vehicle() {}
 
     public Long getId() { return id; }
@@ -60,4 +68,6 @@ public class Vehicle {
     public void setUser(User user) { this.user = user; }
     public User getInUseBy() { return inUseBy; }
     public void setInUseBy(User inUseBy) { this.inUseBy = inUseBy; }
+    public Instant getInUseSince() { return inUseSince; }
+    public void setInUseSince(Instant inUseSince) { this.inUseSince = inUseSince; }
 }

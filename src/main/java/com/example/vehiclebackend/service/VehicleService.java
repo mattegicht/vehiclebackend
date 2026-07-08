@@ -10,6 +10,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
+import java.time.Instant;
 import java.util.List;
 
 @Service
@@ -89,9 +90,11 @@ public class VehicleService {
         if (vehicle.isInUse()) {
             vehicle.setInUse(false);
             vehicle.setInUseBy(null);
+            vehicle.setInUseSince(null);
         } else {
             vehicle.setInUse(true);
             vehicle.setInUseBy(user);
+            vehicle.setInUseSince(Instant.now());
         }
         return vehicleRepository.save(vehicle);
     }

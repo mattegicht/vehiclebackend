@@ -78,6 +78,12 @@ public class VehicleService {
         return bookingRecordRepository.findByVehicleOrderByCheckedOutAtDesc(vehicle);
     }
 
+    /** Fleet-wide booking history for the analytics dashboard. Readable by any
+     *  authenticated user (route is not admin-guarded). */
+    public List<BookingRecord> getAllHistory() {
+        return bookingRecordRepository.findAllWithVehicle();
+    }
+
     /** Admin-only: wipe a vehicle's booking history (route-guarded in SecurityConfig). */
     @Transactional
     public void clearHistory(Long id) {

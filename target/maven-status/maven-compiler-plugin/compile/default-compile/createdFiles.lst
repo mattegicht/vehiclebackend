@@ -26,6 +26,7 @@ com\example\vehiclebackend\service\AuthService$LoginResult.class
 com\example\vehiclebackend\service\VehicleService.class
 com\example\vehiclebackend\repository\VehicleRepository.class
 com\example\vehiclebackend\service\AuthService.class
+com\example\vehiclebackend\controller\VehicleController$FleetBookingResponse.class
 com\example\vehiclebackend\entity\BookingRecord.class
 com\example\vehiclebackend\VehicleBackendApplication.class
 com\example\vehiclebackend\controller\AdminController$ResetPasswordRequest.class

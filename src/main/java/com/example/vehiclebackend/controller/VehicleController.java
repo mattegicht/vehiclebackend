@@ -31,6 +31,7 @@ public class VehicleController {
     record KilometersRequest(@Min(0) int kilometers) {}
     record VehicleResponse(Long id, String kennzeichen, String make, String model, int year, String color, int kilometers, boolean inUse, String username, String createdBy, Instant inUseSince) {}
     record BookingResponse(Long id, String username, Instant checkedOutAt, Instant checkedInAt, int kmAtCheckout, Integer kmAtCheckin) {}
+    record FleetBookingResponse(Long id, Long vehicleId, String kennzeichen, String username, Instant checkedOutAt, Instant checkedInAt, int kmAtCheckout, Integer kmAtCheckin) {}
 
     private VehicleResponse toResponse(Vehicle v) {
         String createdBy = v.getUser() != null ? v.getUser().getUsername() : "";
@@ -73,6 +74,16 @@ public class VehicleController {
     @PutMapping("/{id}/toggle-in-use")
     public ResponseEntity<VehicleResponse> toggleInUse(@PathVariable Long id) {
         return ResponseEntity.ok(toResponse(vehicleService.toggleInUse(id)));
+    }
+
+    // Fleet-wide booking history for the analytics dashboard (any authenticated user).
+    @GetMapping("/bookings")
+    public ResponseEntity<List<FleetBookingResponse>> getAllBookings() {
+        return ResponseEntity.ok(vehicleService.getAllHistory().stream()
+                .map(b -> new FleetBookingResponse(b.getId(), b.getVehicle().getId(),
+                        b.getVehicle().getKennzeichen(), b.getUsername(), b.getCheckedOutAt(),
+                        b.getCheckedInAt(), b.getKmAtCheckout(), b.getKmAtCheckin()))
+                .toList());
     }
 
     @GetMapping("/{id}/history")

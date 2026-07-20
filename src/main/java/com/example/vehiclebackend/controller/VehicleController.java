@@ -1,11 +1,14 @@
 package com.example.vehiclebackend.controller;
 
 import com.example.vehiclebackend.entity.BookingRecord;
+import com.example.vehiclebackend.entity.Reservation;
 import com.example.vehiclebackend.entity.Vehicle;
 import com.example.vehiclebackend.service.VehicleService;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Size;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
@@ -39,6 +42,10 @@ public class VehicleController {
     record FleetBookingResponse(Long id, Long vehicleId, String kennzeichen, String username, Instant checkedOutAt, Instant checkedInAt, int kmAtCheckout, Integer kmAtCheckin) {}
     record PagedBookingsResponse(List<FleetBookingResponse> content, int page, int size,
                                  long totalElements, int totalPages, boolean last) {}
+    record ReservationRequest(@NotNull Instant start, @NotNull Instant end,
+                              @Size(max = 500) String purpose) {}
+    record ReservationResponse(Long id, Long vehicleId, String kennzeichen, String username,
+                               Instant startTime, Instant endTime, String purpose) {}
 
     private VehicleResponse toResponse(Vehicle v) {
         String createdBy = v.getUser() != null ? v.getUser().getUsername() : "";
@@ -126,6 +133,40 @@ public class VehicleController {
     @DeleteMapping("/{id}/history/{recordId}")
     public ResponseEntity<Void> deleteHistoryEntry(@PathVariable Long id, @PathVariable Long recordId) {
         vehicleService.deleteHistoryEntry(id, recordId);
+        return ResponseEntity.noContent().build();
+    }
+
+    private ReservationResponse toReservationResponse(Reservation r) {
+        return new ReservationResponse(r.getId(), r.getVehicle().getId(),
+                r.getVehicle().getKennzeichen(), r.getUsername(),
+                r.getStartTime(), r.getEndTime(), r.getPurpose());
+    }
+
+    // Reserve a vehicle for a future window (any authenticated user).
+    @PostMapping("/{id}/reservations")
+    public ResponseEntity<ReservationResponse> createReservation(
+            @PathVariable Long id, @Valid @RequestBody ReservationRequest req) {
+        return ResponseEntity.ok(toReservationResponse(
+                vehicleService.createReservation(id, req.start(), req.end(), req.purpose())));
+    }
+
+    @GetMapping("/{id}/reservations")
+    public ResponseEntity<List<ReservationResponse>> getReservations(@PathVariable Long id) {
+        return ResponseEntity.ok(vehicleService.getReservations(id).stream()
+                .map(this::toReservationResponse).toList());
+    }
+
+    // Fleet-wide upcoming reservations for the calendar/overview (any authenticated user).
+    @GetMapping("/reservations")
+    public ResponseEntity<List<ReservationResponse>> getUpcomingReservations() {
+        return ResponseEntity.ok(vehicleService.getUpcomingReservations().stream()
+                .map(this::toReservationResponse).toList());
+    }
+
+    // Cancel a reservation (reserver or admin, enforced in the service).
+    @DeleteMapping("/{id}/reservations/{reservationId}")
+    public ResponseEntity<Void> cancelReservation(@PathVariable Long id, @PathVariable Long reservationId) {
+        vehicleService.cancelReservation(id, reservationId);
         return ResponseEntity.noContent().build();
     }
 }

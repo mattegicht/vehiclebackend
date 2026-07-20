@@ -2,6 +2,7 @@ package com.example.vehiclebackend.service;
 
 import com.example.vehiclebackend.entity.User;
 import com.example.vehiclebackend.entity.Vehicle;
+import com.example.vehiclebackend.repository.PasswordResetTokenRepository;
 import com.example.vehiclebackend.repository.UserRepository;
 import com.example.vehiclebackend.repository.VehicleRepository;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -18,13 +19,16 @@ public class AdminService {
 
     private final UserRepository userRepository;
     private final VehicleRepository vehicleRepository;
+    private final PasswordResetTokenRepository tokenRepository;
     private final PasswordEncoder passwordEncoder;
 
     public AdminService(UserRepository userRepository,
                         VehicleRepository vehicleRepository,
+                        PasswordResetTokenRepository tokenRepository,
                         PasswordEncoder passwordEncoder) {
         this.userRepository = userRepository;
         this.vehicleRepository = vehicleRepository;
+        this.tokenRepository = tokenRepository;
         this.passwordEncoder = passwordEncoder;
     }
 
@@ -32,16 +36,47 @@ public class AdminService {
         return userRepository.findAll();
     }
 
-    public User createUser(String username, String password) {
+    public User createUser(String username, String password, String email) {
         if (userRepository.findByUsername(username).isPresent()) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Username already exists");
         }
-        try {
-            return userRepository.save(new User(username, passwordEncoder.encode(password), "ROLE_USER"));
-        } catch (DataIntegrityViolationException e) {
-            // Concurrent create raced past the check above; the unique constraint caught it.
-            throw new ResponseStatusException(HttpStatus.CONFLICT, "Username already exists");
+        String normalizedEmail = normalizeEmail(email);
+        if (normalizedEmail != null && userRepository.findByEmail(normalizedEmail).isPresent()) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Email already in use");
         }
+        User user = new User(username, passwordEncoder.encode(password), "ROLE_USER");
+        user.setEmail(normalizedEmail);
+        try {
+            return userRepository.save(user);
+        } catch (DataIntegrityViolationException e) {
+            // Concurrent create raced past the checks above; a unique constraint caught it.
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Username or email already in use");
+        }
+    }
+
+    /** Admin-set a user's email (used as the reset-link target). Blank clears it. */
+    public User setEmail(Long id, String email) {
+        User user = userRepository.findById(id)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "User not found"));
+        String normalizedEmail = normalizeEmail(email);
+        if (normalizedEmail != null) {
+            userRepository.findByEmail(normalizedEmail)
+                    .filter(other -> !other.getId().equals(id))
+                    .ifPresent(other -> {
+                        throw new ResponseStatusException(HttpStatus.CONFLICT, "Email already in use");
+                    });
+        }
+        user.setEmail(normalizedEmail);
+        try {
+            return userRepository.save(user);
+        } catch (DataIntegrityViolationException e) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Email already in use");
+        }
+    }
+
+    private static String normalizeEmail(String email) {
+        if (email == null || email.isBlank()) return null;
+        return email.trim().toLowerCase();
     }
 
     /** Admin-set a user's password directly — no current-password check (unlike
@@ -90,6 +125,8 @@ public class AdminService {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                     "User still owns vehicles — delete or reassign them first");
         }
+        // password_reset_tokens FKs the user — clear any before deleting.
+        tokenRepository.deleteByUser(user);
         userRepository.delete(user);
     }
 }

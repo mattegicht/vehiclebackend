@@ -38,6 +38,15 @@ docker run -p 8080:8080 \
 | `DB_PASSWORD` | (none — **required**) | App fails to start if unset |
 | `JWT_SECRET` | (none — **required**) | Must be ≥ 32 characters; app fails to start if unset |
 | `PORT` | `8080` | |
+| `MAIL_HOST` | (none) | SMTP host for password-reset emails. **If unset, the app still boots and logs the reset link instead of sending it** — email is optional. |
+| `MAIL_PORT` | `587` | |
+| `MAIL_USERNAME` | (none) | SMTP auth user |
+| `MAIL_PASSWORD` | (none) | SMTP auth password |
+| `MAIL_SMTP_AUTH` | `true` | `spring.mail.properties.mail.smtp.auth` |
+| `MAIL_STARTTLS` | `true` | `spring.mail.properties.mail.smtp.starttls.enable` |
+| `MAIL_FROM` | `no-reply@vehiclebackend.duckdns.org` | From address on reset emails |
+| `APP_FRONTEND_URL` | `https://vehiclebackend.duckdns.org` | Public web-app URL; used to build the reset link (`…/?reset=<token>`) |
+| `PASSWORD_RESET_TTL_MINUTES` | `60` | Reset-token lifetime |
 
 Secrets live in a gitignored `.env` (see `.env.example`); `docker-compose` loads it automatically. For `mvn spring-boot:run`, export `DB_PASSWORD` and `JWT_SECRET` first.
 
@@ -56,6 +65,8 @@ HTTP request
 ```
 
 **Auth:** Stateless JWT. `JwtFilter` runs on every request, reads `Authorization: Bearer <token>`, calls `JwtUtil.parseClaims()`, then loads `UserDetails` and sets `SecurityContextHolder`. Tokens expire after 24 h. CORS is restricted to the origins in `CORS_ALLOWED_ORIGINS` (comma-separated, default `https://vehiclebackend.duckdns.org`); native apps send no Origin header and are unaffected.
+
+**Password reset:** Self-service "Passwort vergessen". `POST /api/auth/forgot-password` (public) issues a single-use, expiring token (`password_reset_tokens` table) and emails a `…/?reset=<token>` link to the account's `email`; `POST /api/auth/reset-password` (public) consumes it. `PasswordResetService` never reveals whether an account exists (always 204), and mail is **optional** — with no `MAIL_HOST` it logs the link instead of sending (via `ObjectProvider<JavaMailSender>`), so the app boots without SMTP. Emails are set by admins (`POST /api/admin/users`, `PUT /api/admin/users/{id}/email`) or by users themselves (`GET`/`PUT /api/users/me/email`). The reset UI is **web-only** (the emailed link opens the Flutter web build, which reads `?reset=` at startup); native builds rely on admin reset.
 
 **Authorization logic in services:** Role checks are done in service methods (not just at the route level) via shared helpers (`isCreator` / `isCurrentDriver` / `isAdmin`) that compare `currentUser()` — the authenticated username from `SecurityContextHolder`, looked up in the DB — against the resource. Only the owner or `ROLE_ADMIN` can delete a vehicle; only the current `inUseBy` user (or any user if the vehicle is free) can toggle it; only the creator, current driver, or an admin can update kilometers. `toggleInUse` runs in a transaction with a pessimistic row lock (`findWithLockById`) so concurrent check-outs serialize.
 

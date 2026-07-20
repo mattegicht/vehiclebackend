@@ -1,6 +1,7 @@
 package com.example.vehiclebackend.controller;
 
 import com.example.vehiclebackend.entity.BookingRecord;
+import com.example.vehiclebackend.entity.CostEntry;
 import com.example.vehiclebackend.entity.Reservation;
 import com.example.vehiclebackend.entity.Vehicle;
 import com.example.vehiclebackend.service.VehicleService;
@@ -8,6 +9,7 @@ import jakarta.validation.Valid;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.PositiveOrZero;
 import jakarta.validation.constraints.Size;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
@@ -52,6 +54,12 @@ public class VehicleController {
                               @Size(max = 500) String purpose) {}
     record ReservationResponse(Long id, Long vehicleId, String kennzeichen, String username,
                                Instant startTime, Instant endTime, String purpose) {}
+    record CostRequest(@NotNull Instant occurredAt, @NotBlank String energyType,
+                       @PositiveOrZero double amount, @PositiveOrZero double cost,
+                       @Min(0) int kilometers, boolean fullTank, @Size(max = 500) String note) {}
+    record CostResponse(Long id, Long vehicleId, String kennzeichen, String username, Instant occurredAt,
+                        String energyType, double amount, double cost, int kilometers, boolean fullTank,
+                        String note) {}
 
     private VehicleResponse toResponse(Vehicle v, Reservation activeRes) {
         String createdBy = v.getUser() != null ? v.getUser().getUsername() : "";
@@ -185,6 +193,40 @@ public class VehicleController {
     @DeleteMapping("/{id}/reservations/{reservationId}")
     public ResponseEntity<Void> cancelReservation(@PathVariable Long id, @PathVariable Long reservationId) {
         vehicleService.cancelReservation(id, reservationId);
+        return ResponseEntity.noContent().build();
+    }
+
+    private CostResponse toCostResponse(CostEntry c) {
+        return new CostResponse(c.getId(), c.getVehicle().getId(), c.getVehicle().getKennzeichen(),
+                c.getUsername(), c.getOccurredAt(), c.getEnergyType(), c.getAmount(), c.getCost(),
+                c.getKilometers(), c.isFullTank(), c.getNote());
+    }
+
+    // Record a refuel/charge for a vehicle (any authenticated user).
+    @PostMapping("/{id}/costs")
+    public ResponseEntity<CostResponse> addCost(@PathVariable Long id,
+                                                @Valid @RequestBody CostRequest req) {
+        return ResponseEntity.ok(toCostResponse(vehicleService.addCost(id, req.occurredAt(),
+                req.energyType(), req.amount(), req.cost(), req.kilometers(), req.fullTank(), req.note())));
+    }
+
+    @GetMapping("/{id}/costs")
+    public ResponseEntity<List<CostResponse>> getCosts(@PathVariable Long id) {
+        return ResponseEntity.ok(vehicleService.getCosts(id).stream()
+                .map(this::toCostResponse).toList());
+    }
+
+    // Fleet-wide cost entries for the dashboard cost-per-km tile (any authenticated user).
+    @GetMapping("/costs")
+    public ResponseEntity<List<CostResponse>> getAllCosts() {
+        return ResponseEntity.ok(vehicleService.getAllCosts().stream()
+                .map(this::toCostResponse).toList());
+    }
+
+    // Delete a cost entry (recorder or admin, enforced in the service).
+    @DeleteMapping("/{id}/costs/{costId}")
+    public ResponseEntity<Void> deleteCost(@PathVariable Long id, @PathVariable Long costId) {
+        vehicleService.deleteCost(id, costId);
         return ResponseEntity.noContent().build();
     }
 }

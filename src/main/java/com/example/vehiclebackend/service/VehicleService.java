@@ -1,10 +1,12 @@
 package com.example.vehiclebackend.service;
 
 import com.example.vehiclebackend.entity.BookingRecord;
+import com.example.vehiclebackend.entity.CostEntry;
 import com.example.vehiclebackend.entity.Reservation;
 import com.example.vehiclebackend.entity.User;
 import com.example.vehiclebackend.entity.Vehicle;
 import com.example.vehiclebackend.repository.BookingRecordRepository;
+import com.example.vehiclebackend.repository.CostEntryRepository;
 import com.example.vehiclebackend.repository.ReservationRepository;
 import com.example.vehiclebackend.repository.UserRepository;
 import com.example.vehiclebackend.repository.VehicleRepository;
@@ -28,14 +30,17 @@ public class VehicleService {
     private final UserRepository userRepository;
     private final BookingRecordRepository bookingRecordRepository;
     private final ReservationRepository reservationRepository;
+    private final CostEntryRepository costEntryRepository;
 
     public VehicleService(VehicleRepository vehicleRepository, UserRepository userRepository,
                           BookingRecordRepository bookingRecordRepository,
-                          ReservationRepository reservationRepository) {
+                          ReservationRepository reservationRepository,
+                          CostEntryRepository costEntryRepository) {
         this.vehicleRepository = vehicleRepository;
         this.userRepository = userRepository;
         this.bookingRecordRepository = bookingRecordRepository;
         this.reservationRepository = reservationRepository;
+        this.costEntryRepository = costEntryRepository;
     }
 
     private User currentUser() {
@@ -94,9 +99,10 @@ public class VehicleService {
         if (!isCreator(vehicle, user) && !isAdmin(user)) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "You do not own this vehicle");
         }
-        // booking_records and reservations both FK the vehicle — clear them first.
+        // booking_records, reservations and cost_entries all FK the vehicle — clear first.
         bookingRecordRepository.deleteByVehicle(vehicle);
         reservationRepository.deleteByVehicle(vehicle);
+        costEntryRepository.deleteByVehicle(vehicle);
         vehicleRepository.delete(vehicle);
     }
 
@@ -249,5 +255,52 @@ public class VehicleService {
                     "Only the person who made the reservation or an admin may cancel it");
         }
         reservationRepository.delete(reservation);
+    }
+
+    /** Fuel/charge cost entries for one vehicle, newest first. */
+    public List<CostEntry> getCosts(Long vehicleId) {
+        Vehicle vehicle = getVehicle(vehicleId);
+        return costEntryRepository.findByVehicleOrderByOccurredAtDesc(vehicle);
+    }
+
+    /** Fleet-wide cost entries for the analytics dashboard, newest first. */
+    public List<CostEntry> getAllCosts() {
+        return costEntryRepository.findAllWithVehicle();
+    }
+
+    /** Record a refuel/charge. energyType must be FUEL or ELECTRIC; amount/cost/km
+     *  must be non-negative. */
+    @Transactional
+    public CostEntry addCost(Long vehicleId, Instant occurredAt, String energyType,
+                             double amount, double cost, int kilometers, boolean fullTank, String note) {
+        Vehicle vehicle = getVehicle(vehicleId);
+        User user = currentUser();
+        if (!"FUEL".equals(energyType) && !"ELECTRIC".equals(energyType)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "energyType must be FUEL or ELECTRIC");
+        }
+        if (amount < 0 || cost < 0 || kilometers < 0) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "amount, cost and kilometers must be >= 0");
+        }
+        Instant when = occurredAt != null ? occurredAt : Instant.now();
+        String trimmed = note == null || note.isBlank() ? null : note.trim();
+        return costEntryRepository.save(new CostEntry(vehicle, user.getUsername(), when,
+                energyType, amount, cost, kilometers, fullTank, trimmed));
+    }
+
+    /** Delete a cost entry. Only the person who recorded it or an admin may; the
+     *  entry must belong to the vehicle in the path. */
+    @Transactional
+    public void deleteCost(Long vehicleId, Long costId) {
+        CostEntry entry = costEntryRepository.findById(costId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Cost entry not found"));
+        if (!entry.getVehicle().getId().equals(vehicleId)) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Cost entry not found for this vehicle");
+        }
+        User user = currentUser();
+        if (!entry.getUsername().equals(user.getUsername()) && !isAdmin(user)) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN,
+                    "Only the person who recorded the entry or an admin may delete it");
+        }
+        costEntryRepository.delete(entry);
     }
 }

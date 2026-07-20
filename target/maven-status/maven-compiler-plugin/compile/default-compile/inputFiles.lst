@@ -5,11 +5,13 @@ C:\Users\MaWasmeier\flutter_apps\vehiclebackend\src\main\java\com\example\vehicl
 C:\Users\MaWasmeier\flutter_apps\vehiclebackend\src\main\java\com\example\vehiclebackend\controller\UserController.java
 C:\Users\MaWasmeier\flutter_apps\vehiclebackend\src\main\java\com\example\vehiclebackend\controller\VehicleController.java
 C:\Users\MaWasmeier\flutter_apps\vehiclebackend\src\main\java\com\example\vehiclebackend\entity\BookingRecord.java
+C:\Users\MaWasmeier\flutter_apps\vehiclebackend\src\main\java\com\example\vehiclebackend\entity\CostEntry.java
 C:\Users\MaWasmeier\flutter_apps\vehiclebackend\src\main\java\com\example\vehiclebackend\entity\PasswordResetToken.java
 C:\Users\MaWasmeier\flutter_apps\vehiclebackend\src\main\java\com\example\vehiclebackend\entity\Reservation.java
 C:\Users\MaWasmeier\flutter_apps\vehiclebackend\src\main\java\com\example\vehiclebackend\entity\User.java
 C:\Users\MaWasmeier\flutter_apps\vehiclebackend\src\main\java\com\example\vehiclebackend\entity\Vehicle.java
 C:\Users\MaWasmeier\flutter_apps\vehiclebackend\src\main\java\com\example\vehiclebackend\repository\BookingRecordRepository.java
+C:\Users\MaWasmeier\flutter_apps\vehiclebackend\src\main\java\com\example\vehiclebackend\repository\CostEntryRepository.java
 C:\Users\MaWasmeier\flutter_apps\vehiclebackend\src\main\java\com\example\vehiclebackend\repository\PasswordResetTokenRepository.java
 C:\Users\MaWasmeier\flutter_apps\vehiclebackend\src\main\java\com\example\vehiclebackend\repository\ReservationRepository.java
 C:\Users\MaWasmeier\flutter_apps\vehiclebackend\src\main\java\com\example\vehiclebackend\repository\UserRepository.java

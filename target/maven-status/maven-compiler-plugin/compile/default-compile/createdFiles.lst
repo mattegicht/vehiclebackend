@@ -16,6 +16,7 @@ com\example\vehiclebackend\controller\AdminController.class
 com\example\vehiclebackend\repository\UserRepository.class
 com\example\vehiclebackend\controller\AuthController$LoginResponse.class
 com\example\vehiclebackend\service\AdminService.class
+com\example\vehiclebackend\controller\VehicleController$TripDetailsRequest.class
 com\example\vehiclebackend\config\DataSeeder.class
 com\example\vehiclebackend\controller\AdminController$CreateUserRequest.class
 com\example\vehiclebackend\controller\VehicleController$PagedBookingsResponse.class

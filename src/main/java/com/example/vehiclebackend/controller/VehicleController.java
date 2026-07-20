@@ -38,9 +38,14 @@ public class VehicleController {
             @NotBlank String color,
             @Min(0) int kilometers) {}
     record KilometersRequest(@Min(0) int kilometers) {}
+    // Optional Fahrtenbuch details sent with a check-out (toggle-in-use). All fields
+    // optional; ignored when the toggle is a check-in.
+    record TripDetailsRequest(@Size(max = 500) String purpose,
+                              @Size(max = 500) String destination,
+                              Boolean business) {}
     record VehicleResponse(Long id, String kennzeichen, String make, String model, int year, String color, int kilometers, boolean inUse, String username, String createdBy, Instant inUseSince, String reservedBy, Instant reservedUntil) {}
-    record BookingResponse(Long id, String username, Instant checkedOutAt, Instant checkedInAt, int kmAtCheckout, Integer kmAtCheckin) {}
-    record FleetBookingResponse(Long id, Long vehicleId, String kennzeichen, String username, Instant checkedOutAt, Instant checkedInAt, int kmAtCheckout, Integer kmAtCheckin) {}
+    record BookingResponse(Long id, String username, Instant checkedOutAt, Instant checkedInAt, int kmAtCheckout, Integer kmAtCheckin, String purpose, String destination, Boolean business) {}
+    record FleetBookingResponse(Long id, Long vehicleId, String kennzeichen, String username, Instant checkedOutAt, Instant checkedInAt, int kmAtCheckout, Integer kmAtCheckin, String purpose, String destination, Boolean business) {}
     record PagedBookingsResponse(List<FleetBookingResponse> content, int page, int size,
                                  long totalElements, int totalPages, boolean last) {}
     record ReservationRequest(@NotNull Instant start, @NotNull Instant end,
@@ -92,8 +97,12 @@ public class VehicleController {
     }
 
     @PutMapping("/{id}/toggle-in-use")
-    public ResponseEntity<VehicleResponse> toggleInUse(@PathVariable Long id) {
-        Vehicle v = vehicleService.toggleInUse(id);
+    public ResponseEntity<VehicleResponse> toggleInUse(
+            @PathVariable Long id,
+            @Valid @RequestBody(required = false) TripDetailsRequest req) {
+        Vehicle v = req == null
+                ? vehicleService.toggleInUse(id)
+                : vehicleService.toggleInUse(id, req.purpose(), req.destination(), req.business());
         return ResponseEntity.ok(toResponse(v, vehicleService.activeReservation(v)));
     }
 
@@ -115,7 +124,8 @@ public class VehicleController {
         List<FleetBookingResponse> content = result.getContent().stream()
                 .map(b -> new FleetBookingResponse(b.getId(), b.getVehicle().getId(),
                         b.getVehicle().getKennzeichen(), b.getUsername(), b.getCheckedOutAt(),
-                        b.getCheckedInAt(), b.getKmAtCheckout(), b.getKmAtCheckin()))
+                        b.getCheckedInAt(), b.getKmAtCheckout(), b.getKmAtCheckin(),
+                        b.getPurpose(), b.getDestination(), b.getBusiness()))
                 .toList();
         return ResponseEntity.ok(new PagedBookingsResponse(content, result.getNumber(),
                 result.getSize(), result.getTotalElements(), result.getTotalPages(), result.isLast()));
@@ -125,7 +135,8 @@ public class VehicleController {
     public ResponseEntity<List<BookingResponse>> getHistory(@PathVariable Long id) {
         return ResponseEntity.ok(vehicleService.getHistory(id).stream()
                 .map(b -> new BookingResponse(b.getId(), b.getUsername(), b.getCheckedOutAt(),
-                        b.getCheckedInAt(), b.getKmAtCheckout(), b.getKmAtCheckin()))
+                        b.getCheckedInAt(), b.getKmAtCheckout(), b.getKmAtCheckin(),
+                        b.getPurpose(), b.getDestination(), b.getBusiness()))
                 .toList());
     }
 

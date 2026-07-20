@@ -37,6 +37,17 @@ public class BookingRecord {
     @Column(name = "km_at_checkin")
     private Integer kmAtCheckin;
 
+    // Fahrtenbuch (driver's-logbook) fields, captured at check-out. All optional:
+    // purpose (Zweck) and destination (Ziel) are free text; business = true means
+    // geschäftlich, false means privat, null means the driver left it unspecified.
+    @Column(length = 500)
+    private String purpose;
+
+    @Column(length = 500)
+    private String destination;
+
+    private Boolean business;
+
     public BookingRecord() {}
 
     public BookingRecord(Vehicle vehicle, String username, Instant checkedOutAt, int kmAtCheckout) {
@@ -59,4 +70,10 @@ public class BookingRecord {
     public void setKmAtCheckout(int kmAtCheckout) { this.kmAtCheckout = kmAtCheckout; }
     public Integer getKmAtCheckin() { return kmAtCheckin; }
     public void setKmAtCheckin(Integer kmAtCheckin) { this.kmAtCheckin = kmAtCheckin; }
+    public String getPurpose() { return purpose; }
+    public void setPurpose(String purpose) { this.purpose = purpose; }
+    public String getDestination() { return destination; }
+    public void setDestination(String destination) { this.destination = destination; }
+    public Boolean getBusiness() { return business; }
+    public void setBusiness(Boolean business) { this.business = business; }
 }

@@ -143,6 +143,14 @@ public class VehicleService {
 
     @Transactional
     public Vehicle toggleInUse(Long id) {
+        return toggleInUse(id, null, null, null);
+    }
+
+    /** Toggle check-out/check-in. On check-out, the optional Fahrtenbuch details
+     *  (Zweck/Ziel/geschäftlich) are recorded on the new booking; on check-in they
+     *  are ignored (the trip already carries them). */
+    @Transactional
+    public Vehicle toggleInUse(Long id, String purpose, String destination, Boolean business) {
         // Pessimistic row lock: concurrent toggles on the same vehicle serialize,
         // so two users cannot both check out a free vehicle.
         Vehicle vehicle = vehicleRepository.findWithLockById(id)
@@ -176,10 +184,18 @@ public class VehicleService {
             vehicle.setInUse(true);
             vehicle.setInUseBy(user);
             vehicle.setInUseSince(now);
-            bookingRecordRepository.save(
-                    new BookingRecord(vehicle, user.getUsername(), now, vehicle.getKilometers()));
+            BookingRecord booking =
+                    new BookingRecord(vehicle, user.getUsername(), now, vehicle.getKilometers());
+            booking.setPurpose(blankToNull(purpose));
+            booking.setDestination(blankToNull(destination));
+            booking.setBusiness(business);
+            bookingRecordRepository.save(booking);
         }
         return vehicleRepository.save(vehicle);
+    }
+
+    private static String blankToNull(String s) {
+        return s == null || s.isBlank() ? null : s.trim();
     }
 
     /** Upcoming/ongoing reservations for one vehicle, soonest first. */

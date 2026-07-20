@@ -17,7 +17,9 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.time.Instant;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 @Service
 public class VehicleService {
@@ -61,6 +63,23 @@ public class VehicleService {
 
     public List<Vehicle> getVehicles() {
         return vehicleRepository.findAllWithUsers();
+    }
+
+    /** The reservation in effect right now for each vehicle (vehicle id → reservation),
+     *  for labelling the list "Reserviert von X". Overlaps are prevented, so there is
+     *  at most one per vehicle. */
+    public Map<Long, Reservation> activeReservationsByVehicle() {
+        Map<Long, Reservation> map = new HashMap<>();
+        for (Reservation r : reservationRepository.findAllActiveAt(Instant.now())) {
+            map.putIfAbsent(r.getVehicle().getId(), r);
+        }
+        return map;
+    }
+
+    /** The reservation in effect right now for one vehicle, or null. */
+    public Reservation activeReservation(Vehicle vehicle) {
+        List<Reservation> active = reservationRepository.findActiveAt(vehicle, Instant.now());
+        return active.isEmpty() ? null : active.get(0);
     }
 
     public Vehicle addVehicle(Vehicle vehicle) {

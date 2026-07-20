@@ -28,6 +28,12 @@ public interface ReservationRepository extends JpaRepository<Reservation, Long> 
     List<Reservation> findActiveAt(@Param("vehicle") Vehicle vehicle,
                                    @Param("instant") Instant instant);
 
+    /** Every reservation covering :instant across the fleet, vehicle fetched, so
+     *  the list endpoint can label each vehicle "Reserviert von X" in one query. */
+    @Query("select r from Reservation r join fetch r.vehicle "
+            + "where r.startTime <= :instant and r.endTime > :instant")
+    List<Reservation> findAllActiveAt(@Param("instant") Instant instant);
+
     List<Reservation> findByVehicleOrderByStartTimeAsc(Vehicle vehicle);
 
     /** Upcoming/ongoing fleet-wide reservations (window not yet ended), with the

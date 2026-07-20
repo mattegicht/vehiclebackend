@@ -18,6 +18,7 @@ import org.springframework.web.bind.annotation.*;
 
 import java.time.Instant;
 import java.util.List;
+import java.util.Map;
 
 @RestController
 @RequestMapping("/api/vehicles")
@@ -37,7 +38,7 @@ public class VehicleController {
             @NotBlank String color,
             @Min(0) int kilometers) {}
     record KilometersRequest(@Min(0) int kilometers) {}
-    record VehicleResponse(Long id, String kennzeichen, String make, String model, int year, String color, int kilometers, boolean inUse, String username, String createdBy, Instant inUseSince) {}
+    record VehicleResponse(Long id, String kennzeichen, String make, String model, int year, String color, int kilometers, boolean inUse, String username, String createdBy, Instant inUseSince, String reservedBy, Instant reservedUntil) {}
     record BookingResponse(Long id, String username, Instant checkedOutAt, Instant checkedInAt, int kmAtCheckout, Integer kmAtCheckin) {}
     record FleetBookingResponse(Long id, Long vehicleId, String kennzeichen, String username, Instant checkedOutAt, Instant checkedInAt, int kmAtCheckout, Integer kmAtCheckin) {}
     record PagedBookingsResponse(List<FleetBookingResponse> content, int page, int size,
@@ -47,18 +48,21 @@ public class VehicleController {
     record ReservationResponse(Long id, Long vehicleId, String kennzeichen, String username,
                                Instant startTime, Instant endTime, String purpose) {}
 
-    private VehicleResponse toResponse(Vehicle v) {
+    private VehicleResponse toResponse(Vehicle v, Reservation activeRes) {
         String createdBy = v.getUser() != null ? v.getUser().getUsername() : "";
         String username = v.getInUseBy() != null ? v.getInUseBy().getUsername() : createdBy;
         return new VehicleResponse(v.getId(), v.getKennzeichen(), v.getMake(), v.getModel(),
                 v.getYear(), v.getColor(), v.getKilometers(), v.isInUse(), username, createdBy,
-                v.getInUseSince());
+                v.getInUseSince(),
+                activeRes != null ? activeRes.getUsername() : null,
+                activeRes != null ? activeRes.getEndTime() : null);
     }
 
     @GetMapping
     public ResponseEntity<List<VehicleResponse>> getVehicles() {
+        Map<Long, Reservation> active = vehicleService.activeReservationsByVehicle();
         return ResponseEntity.ok(vehicleService.getVehicles().stream()
-                .map(this::toResponse).toList());
+                .map(v -> toResponse(v, active.get(v.getId()))).toList());
     }
 
     @PostMapping
@@ -70,7 +74,8 @@ public class VehicleController {
         vehicle.setYear(req.year());
         vehicle.setColor(req.color());
         vehicle.setKilometers(req.kilometers());
-        return ResponseEntity.ok(toResponse(vehicleService.addVehicle(vehicle)));
+        // A brand-new vehicle can't have a reservation yet.
+        return ResponseEntity.ok(toResponse(vehicleService.addVehicle(vehicle), null));
     }
 
     @DeleteMapping("/{id}")
@@ -82,12 +87,14 @@ public class VehicleController {
     @PutMapping("/{id}/kilometers")
     public ResponseEntity<VehicleResponse> updateKilometers(@PathVariable Long id,
                                                              @Valid @RequestBody KilometersRequest req) {
-        return ResponseEntity.ok(toResponse(vehicleService.updateKilometers(id, req.kilometers())));
+        Vehicle v = vehicleService.updateKilometers(id, req.kilometers());
+        return ResponseEntity.ok(toResponse(v, vehicleService.activeReservation(v)));
     }
 
     @PutMapping("/{id}/toggle-in-use")
     public ResponseEntity<VehicleResponse> toggleInUse(@PathVariable Long id) {
-        return ResponseEntity.ok(toResponse(vehicleService.toggleInUse(id)));
+        Vehicle v = vehicleService.toggleInUse(id);
+        return ResponseEntity.ok(toResponse(v, vehicleService.activeReservation(v)));
     }
 
     // Fleet-wide booking history for the analytics dashboard (any authenticated user).

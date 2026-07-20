@@ -43,7 +43,9 @@ docker run -p 8080:8080 \
 | `MAIL_USERNAME` | (none) | SMTP auth user |
 | `MAIL_PASSWORD` | (none) | SMTP auth password |
 | `MAIL_SMTP_AUTH` | `true` | `spring.mail.properties.mail.smtp.auth` |
-| `MAIL_STARTTLS` | `true` | `spring.mail.properties.mail.smtp.starttls.enable` |
+| `MAIL_STARTTLS` | `true` | STARTTLS (port 587). For implicit SSL (port 465) set `false` and `MAIL_SSL=true`. |
+| `MAIL_SSL` | `false` | Implicit SSL on connect. Set `true` with `MAIL_PORT=465` + `MAIL_STARTTLS=false`. |
+| `MAIL_TIMEOUT_MS` | `10000` | SMTP connect/read/write timeout (fail fast if the port is blocked). |
 | `MAIL_FROM` | `no-reply@vehiclebackend.duckdns.org` | From address on reset emails |
 | `APP_FRONTEND_URL` | `https://vehiclebackend.duckdns.org` | Public web-app URL; used to build the reset link (`…/?reset=<token>`) |
 | `PASSWORD_RESET_TTL_MINUTES` | `60` | Reset-token lifetime |

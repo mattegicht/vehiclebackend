@@ -6,6 +6,8 @@ import com.example.vehiclebackend.entity.Vehicle;
 import com.example.vehiclebackend.repository.BookingRecordRepository;
 import com.example.vehiclebackend.repository.UserRepository;
 import com.example.vehiclebackend.repository.VehicleRepository;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
@@ -78,10 +80,10 @@ public class VehicleService {
         return bookingRecordRepository.findByVehicleOrderByCheckedOutAtDesc(vehicle);
     }
 
-    /** Fleet-wide booking history for the analytics dashboard. Readable by any
-     *  authenticated user (route is not admin-guarded). */
-    public List<BookingRecord> getAllHistory() {
-        return bookingRecordRepository.findAllWithVehicle();
+    /** Fleet-wide booking history for the analytics dashboard, one page at a time.
+     *  Readable by any authenticated user (route is not admin-guarded). */
+    public Page<BookingRecord> getAllHistory(Pageable pageable) {
+        return bookingRecordRepository.findAllWithVehicle(pageable);
     }
 
     /** Admin-only: wipe a vehicle's booking history (route-guarded in SecurityConfig). */

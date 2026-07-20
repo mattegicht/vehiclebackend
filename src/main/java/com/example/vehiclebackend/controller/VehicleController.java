@@ -1,10 +1,15 @@
 package com.example.vehiclebackend.controller;
 
+import com.example.vehiclebackend.entity.BookingRecord;
 import com.example.vehiclebackend.entity.Vehicle;
 import com.example.vehiclebackend.service.VehicleService;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
@@ -32,6 +37,8 @@ public class VehicleController {
     record VehicleResponse(Long id, String kennzeichen, String make, String model, int year, String color, int kilometers, boolean inUse, String username, String createdBy, Instant inUseSince) {}
     record BookingResponse(Long id, String username, Instant checkedOutAt, Instant checkedInAt, int kmAtCheckout, Integer kmAtCheckin) {}
     record FleetBookingResponse(Long id, Long vehicleId, String kennzeichen, String username, Instant checkedOutAt, Instant checkedInAt, int kmAtCheckout, Integer kmAtCheckin) {}
+    record PagedBookingsResponse(List<FleetBookingResponse> content, int page, int size,
+                                 long totalElements, int totalPages, boolean last) {}
 
     private VehicleResponse toResponse(Vehicle v) {
         String createdBy = v.getUser() != null ? v.getUser().getUsername() : "";
@@ -77,13 +84,27 @@ public class VehicleController {
     }
 
     // Fleet-wide booking history for the analytics dashboard (any authenticated user).
+    // Paginated so the payload doesn't grow with the whole fleet's history; the
+    // client pages through with ?page=&size= (size clamped to 1..MAX_BOOKINGS_PAGE_SIZE).
+    private static final int DEFAULT_BOOKINGS_PAGE_SIZE = 100;
+    private static final int MAX_BOOKINGS_PAGE_SIZE = 500;
+
     @GetMapping("/bookings")
-    public ResponseEntity<List<FleetBookingResponse>> getAllBookings() {
-        return ResponseEntity.ok(vehicleService.getAllHistory().stream()
+    public ResponseEntity<PagedBookingsResponse> getAllBookings(
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "" + DEFAULT_BOOKINGS_PAGE_SIZE) int size) {
+        int safePage = Math.max(page, 0);
+        int safeSize = Math.min(Math.max(size, 1), MAX_BOOKINGS_PAGE_SIZE);
+        Pageable pageable = PageRequest.of(safePage, safeSize,
+                Sort.by(Sort.Direction.DESC, "checkedOutAt"));
+        Page<BookingRecord> result = vehicleService.getAllHistory(pageable);
+        List<FleetBookingResponse> content = result.getContent().stream()
                 .map(b -> new FleetBookingResponse(b.getId(), b.getVehicle().getId(),
                         b.getVehicle().getKennzeichen(), b.getUsername(), b.getCheckedOutAt(),
                         b.getCheckedInAt(), b.getKmAtCheckout(), b.getKmAtCheckin()))
-                .toList());
+                .toList();
+        return ResponseEntity.ok(new PagedBookingsResponse(content, result.getNumber(),
+                result.getSize(), result.getTotalElements(), result.getTotalPages(), result.isLast()));
     }
 
     @GetMapping("/{id}/history")

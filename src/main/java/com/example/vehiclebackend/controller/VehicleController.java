@@ -91,6 +91,14 @@ public class VehicleController {
         return ResponseEntity.ok(toResponse(vehicleService.addVehicle(vehicle), null));
     }
 
+    @PutMapping("/{id}")
+    public ResponseEntity<VehicleResponse> updateVehicle(@PathVariable Long id,
+                                                         @Valid @RequestBody VehicleRequest req) {
+        Vehicle v = vehicleService.updateVehicle(id, req.kennzeichen(), req.make(), req.model(),
+                req.year(), req.color(), req.kilometers());
+        return ResponseEntity.ok(toResponse(v, vehicleService.activeReservation(v)));
+    }
+
     @DeleteMapping("/{id}")
     public ResponseEntity<Void> deleteVehicle(@PathVariable Long id) {
         vehicleService.deleteVehicle(id);

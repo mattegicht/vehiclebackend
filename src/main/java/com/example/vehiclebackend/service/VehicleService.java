@@ -10,6 +10,7 @@ import com.example.vehiclebackend.repository.CostEntryRepository;
 import com.example.vehiclebackend.repository.ReservationRepository;
 import com.example.vehiclebackend.repository.UserRepository;
 import com.example.vehiclebackend.repository.VehicleRepository;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.http.HttpStatus;
@@ -104,6 +105,30 @@ public class VehicleService {
         reservationRepository.deleteByVehicle(vehicle);
         costEntryRepository.deleteByVehicle(vehicle);
         vehicleRepository.delete(vehicle);
+    }
+
+    /** Edit a vehicle's master data (plate, make, model, year, colour, kilometers).
+     *  Same ownership rule as delete: only the creator or an admin — an arbitrary
+     *  driver may correct the odometer, but not rewrite the vehicle's identity. */
+    public Vehicle updateVehicle(Long id, String kennzeichen, String make, String model,
+                                 int year, String color, int kilometers) {
+        Vehicle vehicle = getVehicle(id);
+        User user = currentUser();
+        if (!isCreator(vehicle, user) && !isAdmin(user)) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "You do not own this vehicle");
+        }
+        vehicle.setKennzeichen(kennzeichen);
+        vehicle.setMake(make);
+        vehicle.setModel(model);
+        vehicle.setYear(year);
+        vehicle.setColor(color);
+        vehicle.setKilometers(kilometers);
+        try {
+            return vehicleRepository.save(vehicle);
+        } catch (DataIntegrityViolationException e) {
+            // `kennzeichen` is unique — renaming onto another vehicle's plate.
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Kennzeichen already exists");
+        }
     }
 
     public List<BookingRecord> getHistory(Long id) {

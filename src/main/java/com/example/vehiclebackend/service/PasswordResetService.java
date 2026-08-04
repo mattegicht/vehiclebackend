@@ -8,13 +8,17 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.http.HttpStatus;
 import org.springframework.mail.MailException;
 import org.springframework.mail.SimpleMailMessage;
 import org.springframework.mail.javamail.JavaMailSender;
+import org.springframework.scheduling.annotation.Async;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.event.TransactionPhase;
+import org.springframework.transaction.event.TransactionalEventListener;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.security.SecureRandom;
@@ -40,6 +44,7 @@ public class PasswordResetService {
     private final PasswordResetTokenRepository tokenRepository;
     private final PasswordEncoder passwordEncoder;
     private final ObjectProvider<JavaMailSender> mailSenderProvider;
+    private final ApplicationEventPublisher events;
     private final String mailHost;
     private final String mailFrom;
     private final String frontendUrl;
@@ -49,6 +54,7 @@ public class PasswordResetService {
                                 PasswordResetTokenRepository tokenRepository,
                                 PasswordEncoder passwordEncoder,
                                 ObjectProvider<JavaMailSender> mailSenderProvider,
+                                ApplicationEventPublisher events,
                                 @Value("${spring.mail.host:}") String mailHost,
                                 @Value("${app.mail.from:no-reply@localhost}") String mailFrom,
                                 @Value("${app.frontend-url:https://vehiclebackend.duckdns.org}") String frontendUrl,
@@ -57,24 +63,46 @@ public class PasswordResetService {
         this.tokenRepository = tokenRepository;
         this.passwordEncoder = passwordEncoder;
         this.mailSenderProvider = mailSenderProvider;
+        this.events = events;
         this.mailHost = mailHost;
         this.mailFrom = mailFrom;
         this.frontendUrl = frontendUrl;
         this.ttlMinutes = ttlMinutes;
     }
 
+    /** Carries the mail off the transaction; see {@link #onResetLinkIssued}. */
+    record ResetLinkIssued(String email, String link) {}
+
     /** Issue a reset token for the account with this email and send the link. Does
      *  nothing (silently) when no account matches — the caller always returns 204. */
     @Transactional
     public void requestReset(String email) {
-        userRepository.findByEmail(email).ifPresent(user -> {
+        if (email == null || email.isBlank()) {
+            return;
+        }
+        // Match the way addresses are stored (AdminService/UserController normalize to
+        // trimmed lowercase) and tolerate rows written before that, plus users typing
+        // "Max@Firma.de" — on PostgreSQL a plain `=` would miss all of those, and the
+        // caller's unconditional 204 would hide the failure completely.
+        userRepository.findByEmailIgnoreCase(email.trim()).ifPresent(user -> {
             // One live token per user: drop any earlier ones so old links stop working.
             tokenRepository.deleteByUser(user);
             String token = newToken();
             tokenRepository.save(new PasswordResetToken(token, user,
                     Instant.now().plus(ttlMinutes, ChronoUnit.MINUTES)));
-            sendResetLink(user.getEmail(), buildLink(token));
+            events.publishEvent(new ResetLinkIssued(user.getEmail(), buildLink(token)));
         });
+    }
+
+    /** Sends after the token is committed and off the request thread. SMTP can block
+     *  for up to MAIL_TIMEOUT_MS per phase, and this endpoint is public, unauthenticated
+     *  and unthrottled — sending inline held a pooled DB connection (and the servlet
+     *  thread) for the whole conversation, so a handful of concurrent calls against a
+     *  blackholed mail host could exhaust the pool and stall every other endpoint. */
+    @Async("mailExecutor")
+    @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
+    public void onResetLinkIssued(ResetLinkIssued event) {
+        sendResetLink(event.email(), event.link());
     }
 
     /** Consume a token and set the new password. Rejects unknown/used/expired tokens. */

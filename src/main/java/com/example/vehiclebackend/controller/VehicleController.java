@@ -43,7 +43,11 @@ public class VehicleController {
             @Min(1886) int year,
             @NotBlank String color,
             @Min(0) Integer kilometers) {}
-    record KilometersRequest(@Min(0) int kilometers) {}
+    // Boxed + @NotNull for the same reason as VehicleRequest above: as a primitive an
+    // absent field would deserialize to 0 and wipe the odometer. Here the reading *is*
+    // the whole payload, so omitting it is always a client bug — reject it with a 400
+    // rather than guessing.
+    record KilometersRequest(@NotNull @Min(0) Integer kilometers) {}
     // Optional Fahrtenbuch details sent with a check-out (toggle-in-use). All fields
     // optional; ignored when the toggle is a check-in.
     record TripDetailsRequest(@Size(max = 500) String purpose,
@@ -58,9 +62,13 @@ public class VehicleController {
                               @Size(max = 500) String purpose) {}
     record ReservationResponse(Long id, Long vehicleId, String kennzeichen, String username,
                                Instant startTime, Instant endTime, String purpose) {}
+    // amount/cost/kilometers are boxed + @NotNull so an omitted field is a 400 instead
+    // of a silent 0 — a 0/0/0 entry would quietly skew the cost-per-km analytics.
+    // `fullTank` stays primitive: false is a genuine default for an optional flag.
     record CostRequest(@NotNull Instant occurredAt, @NotBlank String energyType,
-                       @PositiveOrZero double amount, @PositiveOrZero double cost,
-                       @Min(0) int kilometers, boolean fullTank, @Size(max = 500) String note) {}
+                       @NotNull @PositiveOrZero Double amount, @NotNull @PositiveOrZero Double cost,
+                       @NotNull @Min(0) Integer kilometers, boolean fullTank,
+                       @Size(max = 500) String note) {}
     record CostResponse(Long id, Long vehicleId, String kennzeichen, String username, Instant occurredAt,
                         String energyType, double amount, double cost, int kilometers, boolean fullTank,
                         String note) {}

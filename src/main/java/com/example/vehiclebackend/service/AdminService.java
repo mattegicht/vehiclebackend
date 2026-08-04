@@ -2,6 +2,7 @@ package com.example.vehiclebackend.service;
 
 import com.example.vehiclebackend.entity.User;
 import com.example.vehiclebackend.entity.Vehicle;
+import com.example.vehiclebackend.repository.BookingRecordRepository;
 import com.example.vehiclebackend.repository.PasswordResetTokenRepository;
 import com.example.vehiclebackend.repository.UserRepository;
 import com.example.vehiclebackend.repository.VehicleRepository;
@@ -11,6 +12,7 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Instant;
 import java.util.List;
 import org.springframework.web.server.ResponseStatusException;
 
@@ -19,15 +21,18 @@ public class AdminService {
 
     private final UserRepository userRepository;
     private final VehicleRepository vehicleRepository;
+    private final BookingRecordRepository bookingRecordRepository;
     private final PasswordResetTokenRepository tokenRepository;
     private final PasswordEncoder passwordEncoder;
 
     public AdminService(UserRepository userRepository,
                         VehicleRepository vehicleRepository,
+                        BookingRecordRepository bookingRecordRepository,
                         PasswordResetTokenRepository tokenRepository,
                         PasswordEncoder passwordEncoder) {
         this.userRepository = userRepository;
         this.vehicleRepository = vehicleRepository;
+        this.bookingRecordRepository = bookingRecordRepository;
         this.tokenRepository = tokenRepository;
         this.passwordEncoder = passwordEncoder;
     }
@@ -81,10 +86,14 @@ public class AdminService {
 
     /** Admin-set a user's password directly — no current-password check (unlike
      *  self-service change). Works for any account, including other admins. */
+    @Transactional
     public User resetPassword(Long id, String newPassword) {
         User user = userRepository.findById(id)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "User not found"));
         user.setPasswordHash(passwordEncoder.encode(newPassword));
+        // Any emailed reset link is now stale. Left alive it would stay usable for the
+        // rest of its TTL, letting whoever holds it undo this password change.
+        tokenRepository.deleteByUser(user);
         return userRepository.save(user);
     }
 
@@ -112,9 +121,21 @@ public class AdminService {
         if ("ROLE_ADMIN".equals(user.getRole())) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Cannot delete admin users");
         }
-        // Release any vehicles the user still has checked out.
+        // Release any vehicles the user still has checked out, and close the trip that
+        // went with each. Only toggleInUse's check-in path ever closes a BookingRecord,
+        // so skipping this leaves a trip open forever: the Fahrtenbuch shows a vehicle
+        // that was never returned, and the still-open record keeps blocking odometer
+        // corrections and vehicle deletion long after the driver is gone.
+        Instant now = Instant.now();
         List<Vehicle> checkedOut = vehicleRepository.findAllByInUseBy(user);
         for (Vehicle vehicle : checkedOut) {
+            bookingRecordRepository
+                    .findFirstByVehicleAndCheckedInAtIsNullOrderByCheckedOutAtDesc(vehicle)
+                    .ifPresent(open -> {
+                        open.setCheckedInAt(now);
+                        open.setKmAtCheckin(vehicle.getKilometers());
+                        bookingRecordRepository.save(open);
+                    });
             vehicle.setInUse(false);
             vehicle.setInUseBy(null);
             vehicle.setInUseSince(null);

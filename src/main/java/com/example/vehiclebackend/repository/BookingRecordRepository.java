@@ -25,5 +25,7 @@ public interface BookingRecordRepository extends JpaRepository<BookingRecord, Lo
     /** The still-open booking for a vehicle (checked out, not yet returned), if any. */
     Optional<BookingRecord> findFirstByVehicleAndCheckedInAtIsNullOrderByCheckedOutAtDesc(Vehicle vehicle);
 
+    boolean existsByVehicle(Vehicle vehicle);
+
     void deleteByVehicle(Vehicle vehicle);
 }

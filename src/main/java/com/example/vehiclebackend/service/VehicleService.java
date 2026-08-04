@@ -121,6 +121,14 @@ public class VehicleService {
         if (!isCreator(vehicle, user) && !isAdmin(user)) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "You do not own this vehicle");
         }
+        // Deleting the vehicle cascades into its booking history, so without this an
+        // ordinary creator could wipe the Fahrtenbuch that SecurityConfig deliberately
+        // reserves for admins (DELETE /api/vehicles/*/history). A never-used vehicle —
+        // e.g. one added by mistake — has no log to protect and stays deletable.
+        if (!isAdmin(user) && bookingRecordRepository.existsByVehicle(vehicle)) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "Vehicle has booking history — an admin must clear it before deletion");
+        }
         // booking_records, reservations and cost_entries all FK the vehicle — clear first.
         bookingRecordRepository.deleteByVehicle(vehicle);
         reservationRepository.deleteByVehicle(vehicle);

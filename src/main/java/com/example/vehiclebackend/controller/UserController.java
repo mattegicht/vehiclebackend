@@ -1,6 +1,7 @@
 package com.example.vehiclebackend.controller;
 
 import com.example.vehiclebackend.entity.User;
+import com.example.vehiclebackend.repository.PasswordResetTokenRepository;
 import com.example.vehiclebackend.repository.UserRepository;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Email;
@@ -11,6 +12,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.server.ResponseStatusException;
 
@@ -19,10 +21,14 @@ import org.springframework.web.server.ResponseStatusException;
 public class UserController {
 
     private final UserRepository userRepository;
+    private final PasswordResetTokenRepository tokenRepository;
     private final PasswordEncoder passwordEncoder;
 
-    public UserController(UserRepository userRepository, PasswordEncoder passwordEncoder) {
+    public UserController(UserRepository userRepository,
+                          PasswordResetTokenRepository tokenRepository,
+                          PasswordEncoder passwordEncoder) {
         this.userRepository = userRepository;
+        this.tokenRepository = tokenRepository;
         this.passwordEncoder = passwordEncoder;
     }
 
@@ -66,6 +72,7 @@ public class UserController {
     }
 
     @PutMapping("/me/password")
+    @Transactional
     public ResponseEntity<Void> changePassword(@Valid @RequestBody ChangePasswordRequest req,
                                                Authentication auth) {
         User user = currentUser(auth);
@@ -74,6 +81,10 @@ public class UserController {
         }
         user.setPasswordHash(passwordEncoder.encode(req.newPassword()));
         userRepository.save(user);
+        // Changing the password is how someone reacts to a reset mail they didn't ask
+        // for. Leaving that link alive for the rest of its TTL would make the reaction
+        // pointless — whoever triggered it could just use it to take the account back.
+        tokenRepository.deleteByUser(user);
         return ResponseEntity.noContent().build();
     }
 }

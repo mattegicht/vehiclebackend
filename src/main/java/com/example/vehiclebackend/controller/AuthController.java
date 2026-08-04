@@ -1,11 +1,13 @@
 package com.example.vehiclebackend.controller;
 
+import com.example.vehiclebackend.security.LoginLockedException;
 import com.example.vehiclebackend.service.AuthService;
 import com.example.vehiclebackend.service.PasswordResetService;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.authentication.BadCredentialsException;
@@ -35,6 +37,11 @@ public class AuthController {
             return ResponseEntity.ok(new LoginResponse(result.token(), req.username(), result.role()));
         } catch (BadCredentialsException e) {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Invalid credentials");
+        } catch (LoginLockedException e) {
+            // 429 + Retry-After: the client renders its own wait message from the header.
+            return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS)
+                    .header(HttpHeaders.RETRY_AFTER, String.valueOf(e.getRetryAfterSeconds()))
+                    .body("Too many failed login attempts");
         }
     }
 

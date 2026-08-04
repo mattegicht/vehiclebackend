@@ -15,7 +15,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ./mvnw test
 
 # Run a single test class
-./mvnw test -Dtest=VehicleServiceTest
+./mvnw test -Dtest=LoginAttemptServiceTest
 
 # Build Docker image
 docker build -t vehiclebackend .
@@ -49,6 +49,9 @@ docker run -p 8080:8080 \
 | `MAIL_FROM` | `no-reply@vehiclebackend.duckdns.org` | From address on reset emails |
 | `APP_FRONTEND_URL` | `https://vehiclebackend.duckdns.org` | Public web-app URL; used to build the reset link (`…/?reset=<token>`) |
 | `PASSWORD_RESET_TTL_MINUTES` | `60` | Reset-token lifetime |
+| `LOGIN_MAX_ATTEMPTS` | `5` | Failed logins per username before lockout. **`0` disables the lockout.** |
+| `LOGIN_ATTEMPT_WINDOW_MINUTES` | `15` | Window the failures are counted in |
+| `LOGIN_LOCKOUT_MINUTES` | `15` | How long a locked username is refused |
 
 Secrets live in a gitignored `.env` (see `.env.example`); `docker-compose` loads it automatically. For `mvn spring-boot:run`, export `DB_PASSWORD` and `JWT_SECRET` first.
 
@@ -67,6 +70,8 @@ HTTP request
 ```
 
 **Auth:** Stateless JWT. `JwtFilter` runs on every request, reads `Authorization: Bearer <token>`, calls `JwtUtil.parseClaims()`, then loads `UserDetails` and sets `SecurityContextHolder`. Tokens expire after 24 h. CORS is restricted to the origins in `CORS_ALLOWED_ORIGINS` (comma-separated, default `https://vehiclebackend.duckdns.org`); native apps send no Origin header and are unaffected.
+
+**Login brute-force lockout:** `LoginAttemptService` (in `security/`) counts failed logins per username; past `LOGIN_MAX_ATTEMPTS` inside the window, `AuthService.login` throws `LoginLockedException` and `/api/auth/login` answers **429** with a `Retry-After` header — before the account is even looked up, so an unknown username locks exactly like a real one (no enumeration). Keys are lower-cased, so case variations share one bucket. A successful login, a self-service or admin password reset, a password change, and user deletion all clear the record (`loginAttempts.reset(username)`) — that's the escape hatch for a legitimately locked-out user, since a lockout is per-username and anyone who knows a username can trigger one. Deliberately **not** keyed by IP: browser traffic arrives through Caddy → nginx, so the address comes from a client-spoofable `X-Forwarded-For` chain, and a proxy that stopped forwarding it would collapse every user into one bucket. State is in-memory (no DB write on the login path) and is lost on restart; with a single backend instance that is the accepted trade-off. Unit-tested against a fake `Clock` in `LoginAttemptServiceTest` (plain JUnit, no Spring context or DB).
 
 **Password reset:** Self-service "Passwort vergessen". `POST /api/auth/forgot-password` (public) issues a single-use, expiring token (`password_reset_tokens` table) and emails a `…/?reset=<token>` link to the account's `email`; `POST /api/auth/reset-password` (public) consumes it. `PasswordResetService` never reveals whether an account exists (always 204), and mail is **optional** — with no `MAIL_HOST` it logs the link instead of sending (via `ObjectProvider<JavaMailSender>`), so the app boots without SMTP. Emails are set by admins (`POST /api/admin/users`, `PUT /api/admin/users/{id}/email`) or by users themselves (`GET`/`PUT /api/users/me/email`). The reset UI is **web-only** (the emailed link opens the Flutter web build, which reads `?reset=` at startup); native builds rely on admin reset.
 

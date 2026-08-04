@@ -3,6 +3,7 @@ package com.example.vehiclebackend.controller;
 import com.example.vehiclebackend.entity.User;
 import com.example.vehiclebackend.repository.PasswordResetTokenRepository;
 import com.example.vehiclebackend.repository.UserRepository;
+import com.example.vehiclebackend.security.LoginAttemptService;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
@@ -23,13 +24,16 @@ public class UserController {
     private final UserRepository userRepository;
     private final PasswordResetTokenRepository tokenRepository;
     private final PasswordEncoder passwordEncoder;
+    private final LoginAttemptService loginAttempts;
 
     public UserController(UserRepository userRepository,
                           PasswordResetTokenRepository tokenRepository,
-                          PasswordEncoder passwordEncoder) {
+                          PasswordEncoder passwordEncoder,
+                          LoginAttemptService loginAttempts) {
         this.userRepository = userRepository;
         this.tokenRepository = tokenRepository;
         this.passwordEncoder = passwordEncoder;
+        this.loginAttempts = loginAttempts;
     }
 
     record ChangePasswordRequest(@NotBlank String currentPassword,
@@ -85,6 +89,9 @@ public class UserController {
         // for. Leaving that link alive for the rest of its TTL would make the reaction
         // pointless — whoever triggered it could just use it to take the account back.
         tokenRepository.deleteByUser(user);
+        // A live token can outlast a brute-force lockout, so clear it too — the old
+        // password it was guarding is gone.
+        loginAttempts.reset(user.getUsername());
         return ResponseEntity.noContent().build();
     }
 }

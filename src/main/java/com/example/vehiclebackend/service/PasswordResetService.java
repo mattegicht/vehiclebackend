@@ -4,6 +4,7 @@ import com.example.vehiclebackend.entity.PasswordResetToken;
 import com.example.vehiclebackend.entity.User;
 import com.example.vehiclebackend.repository.PasswordResetTokenRepository;
 import com.example.vehiclebackend.repository.UserRepository;
+import com.example.vehiclebackend.security.LoginAttemptService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.ObjectProvider;
@@ -43,6 +44,7 @@ public class PasswordResetService {
     private final UserRepository userRepository;
     private final PasswordResetTokenRepository tokenRepository;
     private final PasswordEncoder passwordEncoder;
+    private final LoginAttemptService loginAttempts;
     private final ObjectProvider<JavaMailSender> mailSenderProvider;
     private final ApplicationEventPublisher events;
     private final String mailHost;
@@ -53,6 +55,7 @@ public class PasswordResetService {
     public PasswordResetService(UserRepository userRepository,
                                 PasswordResetTokenRepository tokenRepository,
                                 PasswordEncoder passwordEncoder,
+                                LoginAttemptService loginAttempts,
                                 ObjectProvider<JavaMailSender> mailSenderProvider,
                                 ApplicationEventPublisher events,
                                 @Value("${spring.mail.host:}") String mailHost,
@@ -62,6 +65,7 @@ public class PasswordResetService {
         this.userRepository = userRepository;
         this.tokenRepository = tokenRepository;
         this.passwordEncoder = passwordEncoder;
+        this.loginAttempts = loginAttempts;
         this.mailSenderProvider = mailSenderProvider;
         this.events = events;
         this.mailHost = mailHost;
@@ -119,6 +123,9 @@ public class PasswordResetService {
         userRepository.save(user);
         prt.setUsed(true);
         tokenRepository.save(prt);
+        // Proving control of the mailbox is the way out of a brute-force lockout —
+        // otherwise the new password is unusable until the lockout expires.
+        loginAttempts.reset(user.getUsername());
     }
 
     private String newToken() {

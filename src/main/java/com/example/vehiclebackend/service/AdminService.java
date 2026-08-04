@@ -6,6 +6,7 @@ import com.example.vehiclebackend.repository.BookingRecordRepository;
 import com.example.vehiclebackend.repository.PasswordResetTokenRepository;
 import com.example.vehiclebackend.repository.UserRepository;
 import com.example.vehiclebackend.repository.VehicleRepository;
+import com.example.vehiclebackend.security.LoginAttemptService;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -24,17 +25,20 @@ public class AdminService {
     private final BookingRecordRepository bookingRecordRepository;
     private final PasswordResetTokenRepository tokenRepository;
     private final PasswordEncoder passwordEncoder;
+    private final LoginAttemptService loginAttempts;
 
     public AdminService(UserRepository userRepository,
                         VehicleRepository vehicleRepository,
                         BookingRecordRepository bookingRecordRepository,
                         PasswordResetTokenRepository tokenRepository,
-                        PasswordEncoder passwordEncoder) {
+                        PasswordEncoder passwordEncoder,
+                        LoginAttemptService loginAttempts) {
         this.userRepository = userRepository;
         this.vehicleRepository = vehicleRepository;
         this.bookingRecordRepository = bookingRecordRepository;
         this.tokenRepository = tokenRepository;
         this.passwordEncoder = passwordEncoder;
+        this.loginAttempts = loginAttempts;
     }
 
     public List<User> getAllUsers() {
@@ -94,6 +98,9 @@ public class AdminService {
         // Any emailed reset link is now stale. Left alive it would stay usable for the
         // rest of its TTL, letting whoever holds it undo this password change.
         tokenRepository.deleteByUser(user);
+        // An admin reset is also how a user who got locked out gets back in, so the
+        // brute-force counter must not outlive the password it was protecting.
+        loginAttempts.reset(user.getUsername());
         return userRepository.save(user);
     }
 
@@ -148,6 +155,8 @@ public class AdminService {
         }
         // password_reset_tokens FKs the user — clear any before deleting.
         tokenRepository.deleteByUser(user);
+        // Don't leave a lockout behind for a name that could be handed out again.
+        loginAttempts.reset(user.getUsername());
         userRepository.delete(user);
     }
 }

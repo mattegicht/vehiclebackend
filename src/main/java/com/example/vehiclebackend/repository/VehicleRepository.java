@@ -22,6 +22,13 @@ public interface VehicleRepository extends JpaRepository<Vehicle, Long> {
     @Query("select v from Vehicle v where v.id = :id")
     Optional<Vehicle> findWithLockById(@Param("id") Long id);
 
+    /** Plate-uniqueness checks for create and rename. Enforced in the application
+     *  rather than left to the DB, because `ddl-auto=update` can only create the
+     *  unique index if no duplicate plates already exist in the live database. */
+    boolean existsByKennzeichen(String kennzeichen);
+
+    boolean existsByKennzeichenAndIdNot(String kennzeichen, Long id);
+
     boolean existsByUser(User user);
 
     List<Vehicle> findAllByInUseBy(User user);

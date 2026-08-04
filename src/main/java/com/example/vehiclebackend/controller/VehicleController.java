@@ -32,13 +32,17 @@ public class VehicleController {
         this.vehicleService = vehicleService;
     }
 
+    // `kilometers` is a boxed Integer on purpose: as a primitive an absent JSON field
+    // deserializes to 0 and passes @Min(0), which on PUT would wipe the odometer the
+    // whole analytics dashboard is computed from. Null means "not supplied" — POST
+    // starts at 0, PUT leaves the stored value alone.
     record VehicleRequest(
             @NotBlank String kennzeichen,
             @NotBlank String make,
             @NotBlank String model,
             @Min(1886) int year,
             @NotBlank String color,
-            @Min(0) int kilometers) {}
+            @Min(0) Integer kilometers) {}
     record KilometersRequest(@Min(0) int kilometers) {}
     // Optional Fahrtenbuch details sent with a check-out (toggle-in-use). All fields
     // optional; ignored when the toggle is a check-in.
@@ -86,7 +90,7 @@ public class VehicleController {
         vehicle.setModel(req.model());
         vehicle.setYear(req.year());
         vehicle.setColor(req.color());
-        vehicle.setKilometers(req.kilometers());
+        vehicle.setKilometers(req.kilometers() != null ? req.kilometers() : 0);
         // A brand-new vehicle can't have a reservation yet.
         return ResponseEntity.ok(toResponse(vehicleService.addVehicle(vehicle), null));
     }

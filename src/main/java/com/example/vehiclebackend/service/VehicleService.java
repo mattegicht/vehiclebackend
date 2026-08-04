@@ -11,6 +11,7 @@ import com.example.vehiclebackend.repository.ReservationRepository;
 import com.example.vehiclebackend.repository.UserRepository;
 import com.example.vehiclebackend.repository.VehicleRepository;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.dao.DuplicateKeyException;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.http.HttpStatus;
@@ -88,9 +89,29 @@ public class VehicleService {
         return active.isEmpty() ? null : active.get(0);
     }
 
+    @Transactional
     public Vehicle addVehicle(Vehicle vehicle) {
+        String plate = normalizePlate(vehicle.getKennzeichen());
+        if (vehicleRepository.existsByKennzeichen(plate)) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Kennzeichen already exists");
+        }
+        vehicle.setKennzeichen(plate);
         vehicle.setUser(currentUser());
-        return vehicleRepository.save(vehicle);
+        try {
+            return vehicleRepository.saveAndFlush(vehicle);
+        } catch (DataIntegrityViolationException e) {
+            if (isDuplicateKennzeichen(e)) {
+                throw new ResponseStatusException(HttpStatus.CONFLICT, "Kennzeichen already exists");
+            }
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid vehicle data");
+        }
+    }
+
+    /** Plates are trimmed before they are compared or stored, so "M-AB 123 " and
+     *  "M-AB 123" cannot coexist as two vehicles. Applied on create as well as on
+     *  rename — normalising only one of the two would leave the gap open. */
+    private static String normalizePlate(String kennzeichen) {
+        return kennzeichen == null ? null : kennzeichen.trim();
     }
 
     @Transactional
@@ -109,26 +130,77 @@ public class VehicleService {
 
     /** Edit a vehicle's master data (plate, make, model, year, colour, kilometers).
      *  Same ownership rule as delete: only the creator or an admin — an arbitrary
-     *  driver may correct the odometer, but not rewrite the vehicle's identity. */
+     *  driver may correct the odometer, but not rewrite the vehicle's identity.
+     *  A null `kilometers` leaves the odometer untouched. */
+    @Transactional
     public Vehicle updateVehicle(Long id, String kennzeichen, String make, String model,
-                                 int year, String color, int kilometers) {
-        Vehicle vehicle = getVehicle(id);
+                                 int year, String color, Integer kilometers) {
+        // Pessimistic row lock (same as toggleInUse). The entity has no @Version and
+        // no @DynamicUpdate, so Hibernate writes *every* column from the snapshot read
+        // here — including in_use / in_use_by_id / in_use_since. Without the lock a
+        // check-out committing between the read and the write would be silently
+        // reverted, leaving the vehicle "free" while someone is driving it.
+        Vehicle vehicle = vehicleRepository.findWithLockById(id)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Vehicle not found"));
         User user = currentUser();
         if (!isCreator(vehicle, user) && !isAdmin(user)) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "You do not own this vehicle");
         }
-        vehicle.setKennzeichen(kennzeichen);
+        String plate = normalizePlate(kennzeichen);
+        if (vehicleRepository.existsByKennzeichenAndIdNot(plate, id)) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Kennzeichen already exists");
+        }
+        vehicle.setKennzeichen(plate);
         vehicle.setMake(make);
         vehicle.setModel(model);
         vehicle.setYear(year);
         vehicle.setColor(color);
-        vehicle.setKilometers(kilometers);
-        try {
-            return vehicleRepository.save(vehicle);
-        } catch (DataIntegrityViolationException e) {
-            // `kennzeichen` is unique — renaming onto another vehicle's plate.
-            throw new ResponseStatusException(HttpStatus.CONFLICT, "Kennzeichen already exists");
+        if (kilometers != null) {
+            assertNotBelowOpenTrip(vehicle, kilometers);
+            vehicle.setKilometers(kilometers);
         }
+        try {
+            // saveAndFlush, not save: this method is transactional, so a plain save()
+            // would defer the UPDATE to commit — outside this try — and any violation
+            // would surface as a 500 instead of being mapped below.
+            return vehicleRepository.saveAndFlush(vehicle);
+        } catch (DataIntegrityViolationException e) {
+            if (isDuplicateKennzeichen(e)) {
+                // Lost a race: another transaction took the plate after the check above.
+                throw new ResponseStatusException(HttpStatus.CONFLICT, "Kennzeichen already exists");
+            }
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid vehicle data");
+        }
+    }
+
+    /** Tells a taken plate apart from any other integrity failure (e.g. an over-long
+     *  make/model overflowing its varchar), which must not be reported as a plate
+     *  conflict. Hibernate generates the constraint name under `ddl-auto=update`, so
+     *  it isn't stable enough to match on — go by the driver's message instead
+     *  (Postgres names the column, MySQL says "Duplicate entry"). */
+    private static boolean isDuplicateKennzeichen(DataIntegrityViolationException e) {
+        if (e instanceof DuplicateKeyException) {
+            return true;
+        }
+        String message = e.getMostSpecificCause().getMessage();
+        return message != null
+                && (message.toLowerCase().contains("kennzeichen") || message.contains("Duplicate entry"));
+    }
+
+    /** The odometer may be corrected downwards (deliberate — it allows fixing typos),
+     *  but never below the reading the currently open trip started at: check-in stores
+     *  the vehicle's value as kmAtCheckin, so a lower number produces a negative trip
+     *  distance, which the dashboard then divides fuel costs by. */
+    private void assertNotBelowOpenTrip(Vehicle vehicle, int kilometers) {
+        bookingRecordRepository
+                .findFirstByVehicleAndCheckedInAtIsNullOrderByCheckedOutAtDesc(vehicle)
+                .ifPresent(open -> {
+                    if (kilometers < open.getKmAtCheckout()) {
+                        throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                                "Kilometers cannot be lower than " + open.getKmAtCheckout()
+                                        + ", the reading when the current trip started");
+                    }
+                });
     }
 
     public List<BookingRecord> getHistory(Long id) {
@@ -161,13 +233,20 @@ public class VehicleService {
         bookingRecordRepository.delete(record);
     }
 
+    /** Correct the odometer without touching the rest of the master data. Locked and
+     *  transactional for the same reasons as updateVehicle: the save writes every
+     *  column from the row read here, and the open-trip guard below is a check-then-act
+     *  that a concurrent check-out would otherwise slip past. */
+    @Transactional
     public Vehicle updateKilometers(Long id, int kilometers) {
-        Vehicle vehicle = getVehicle(id);
+        Vehicle vehicle = vehicleRepository.findWithLockById(id)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Vehicle not found"));
         User user = currentUser();
         if (!isCreator(vehicle, user) && !isCurrentDriver(vehicle, user) && !isAdmin(user)) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN,
                     "Only the vehicle's creator, its current driver, or an admin may update kilometers");
         }
+        assertNotBelowOpenTrip(vehicle, kilometers);
         vehicle.setKilometers(kilometers);
         return vehicleRepository.save(vehicle);
     }
